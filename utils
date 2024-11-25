@@ -1,0 +1,107 @@
+import yfinance as yf
+import pandas as pd
+import logging
+from typing import List, Dict, Optional
+
+# Configure logging
+logging.basicConfig(level=logging.INFO, format='%(levelname)s:%(message)s')
+
+class YahooFinanceDataLoader:
+    def __init__(
+        self, 
+        tickers: List[str], 
+        start_date: str, 
+        end_date: str, 
+        interval: str = '1d'
+    ):
+        """
+        Initializes the data loader with the list of tickers, date range, and interval.
+
+        Parameters:
+            tickers (List[str]): List of ticker symbols.
+            start_date (str): Start date in 'YYYY-MM-DD' format.
+            end_date (str): End date in 'YYYY-MM-DD' format.
+            interval (str): Data interval ('1d', '1wk', '1mo', etc.).
+        """
+        self.tickers = tickers
+        self.start_date = start_date
+        self.end_date = end_date
+        self.interval = interval
+        logging.info("DataLoader initialized.")
+
+    def fetch_data(self) -> Dict[str, pd.DataFrame]:
+        """
+        Fetches historical data for the specified tickers and date range.
+
+        Returns:
+            Dict[str, pd.DataFrame]: A dictionary of DataFrames keyed by ticker symbol.
+        """
+        data = {}
+        for ticker in self.tickers:
+            try:
+                logging.info(f"Fetching data for {ticker}")
+                ticker_data = yf.download(
+                    ticker, 
+                    start=self.start_date, 
+                    end=self.end_date, 
+                    interval=self.interval, 
+                    progress=False
+                )
+                if ticker_data.empty:
+                    logging.warning(f"No data found for {ticker}.")
+                else:
+                    data[ticker] = ticker_data
+            except Exception as e:
+                logging.error(f"Error fetching data for {ticker}: {e}")
+        return data
+
+    def save_data(self, data: Dict[str, pd.DataFrame], file_format: str = 'csv') -> None:
+        """
+        Saves the fetched data to files in the specified format.
+
+        Parameters:
+            data (Dict[str, pd.DataFrame]): The data dictionary returned by fetch_data.
+            file_format (str): The format to save the data ('csv', 'json', 'pickle').
+        """
+        for ticker, df in data.items():
+            filename = f"{ticker}.{file_format}"
+            try:
+                if file_format == 'csv':
+                    df.to_csv(filename)
+                elif file_format == 'json':
+                    df.to_json(filename)
+                elif file_format == 'pickle':
+                    df.to_pickle(filename)
+                else:
+                    logging.error(f"Unsupported file format: {file_format}")
+                logging.info(f"Data for {ticker} saved to {filename}.")
+            except Exception as e:
+                logging.error(f"Error saving data for {ticker}: {e}")
+
+    def load_data(self, ticker: str, file_format: str = 'csv') -> Optional[pd.DataFrame]:
+        """
+        Loads data from a file for a specific ticker.
+
+        Parameters:
+            ticker (str): The ticker symbol to load data for.
+            file_format (str): The file format ('csv', 'json', 'pickle').
+
+        Returns:
+            pd.DataFrame: A DataFrame with the data or None if loading fails.
+        """
+        filename = f"{ticker}.{file_format}"
+        try:
+            if file_format == 'csv':
+                df = pd.read_csv(filename, index_col=0, parse_dates=True)
+            elif file_format == 'json':
+                df = pd.read_json(filename)
+            elif file_format == 'pickle':
+                df = pd.read_pickle(filename)
+            else:
+                logging.error(f"Unsupported file format: {file_format}")
+                return None
+            logging.info(f"Data for {ticker} loaded from {filename}.")
+            return df
+        except Exception as e:
+            logging.error(f"Error loading data for {ticker}: {e}")
+            return None
