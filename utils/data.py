@@ -62,35 +62,44 @@ class Portfolio:
         self.volatilities = self.returns.rolling(window=rolling_window, win_type=win_type).std().dropna()
         return self.volatilities
 
-    def optimize_portfolio(self, optimizer= "default", bounds=None, rolling_window=50, win_type=None):
+    def optimize_portfolio(self, optimizer= "MD", bounds=None, rolling_window=50):
         """
         calcule les covariances sur des fenêres de t à (t - 49) puis calcule les poids à partir de la covariance 
         """
         
-        cov_rolling = self.returns.rolling(window=rolling_window, win_type=win_type).cov().dropna()
+        cov_rolling = self.returns.rolling(window=rolling_window).cov().dropna()
         dates = cov_rolling.index.get_level_values('Date').unique()
         n_dates = len(dates)
 
-        self.dynamic_weights = pd.DataFrame(np.zeros(shape=(n_dates, self.n_assets_)), index=dates, columns=cov_rolling.columns)
+        self.dynamic_weights_shift1 = pd.DataFrame(np.zeros(shape=(n_dates, self.n_assets_)), index=dates, columns=cov_rolling.columns)
 
-        if optimizer == "default":
+        if optimizer == "MD":
 
-            for i in range(n_dates - 1):
+            for i in range(n_dates):
                 cov = cov_rolling.loc[dates[i]]
-                self.dynamic_weights.loc[dates[i]] = get_weights_md(cov, bounds=bounds)
+                self.dynamic_weights_shift1.loc[dates[i]] = get_weights_md(cov, bounds=bounds)
+                
+            self.dynamic_weights = self.dynamic_weights_shift1.shift(1).dropna()
+                 
 
-    def get_portfolio_returns(self):
-        weighted_returns = self.returns.loc[self.dynamic_weights.index] * self.dynamic_weights
-        self.portfolio_returns = weighted_returns.sum(axis=1)
+    def get_portfolio_returns(self, cost_rate=0):
+        common_dates = self.dynamic_weights.index
+        weighted_returns = self.returns.loc[common_dates] * self.dynamic_weights
+        cost = cost_rate * np.abs(self.dynamic_weights_shift1.loc[common_dates] * (1 + weighted_returns) - self.dynamic_weights)
+        weighted_returns_cost_adj = weighted_returns - cost 
+        self.portfolio_returns = weighted_returns_cost_adj.sum(axis=1)
         return self.portfolio_returns
     
     def get_portfolio_vol(self, rolling_window=50, win_type=None):
-        weighted_returns = self.returns * self.dynamic_weights
-        portfolio_volatility = weighted_returns.rolling(window=rolling_window, win_type=win_type).std().dropna()
+        portfolio_volatility = self.portfolio_returns.rolling(window=rolling_window, win_type=win_type).std().dropna()
         return portfolio_volatility
     
-    def get_sharpe_ratio(self, start_date, end_date):
-        return self.portfolio_returns.loc[start_date:end_date].mean() / self.portfolio_returns.loc[start_date:end_date].std() 
+    def get_sharpe_ratio(self, start_date=None, end_date=None):
+        if not start_date: 
+            start_date = self.portfolio_returns.index[0]
+        if not end_date: 
+            end_date = self.portfolio_returns.index[-1]
+        return self.portfolio_returns.loc[start_date:end_date].mean() / self.portfolio_returns.loc[start_date:end_date].std()
 
 
         
