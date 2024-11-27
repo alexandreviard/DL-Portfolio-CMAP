@@ -33,19 +33,6 @@ class FinancialDataProcessor:
         """
         return price_data.pct_change().dropna()
 
-    @staticmethod
-    def calculate_covariance(returns_data):
-        """
-        Calcule la matrice de covariance des rendements.
-
-        Parameters:
-        - returns_data (pd.DataFrame): Rendements des actifs.
-
-        Returns:
-        - pd.DataFrame: Matrice de covariance.
-        """
-        return returns_data.cov()
-
 
 class Portfolio:
     def __init__(self, returns_data:pd.DataFrame, weights=None):
