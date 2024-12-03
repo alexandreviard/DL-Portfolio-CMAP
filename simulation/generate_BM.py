@@ -1,6 +1,6 @@
 import pandas as pd
 import numpy as np
-from scipy.linalg import toeplitz
+from scipy.linalg import toeplitz, cholesky
 
 ####### méthode 1 #####
 
@@ -44,7 +44,22 @@ def euler_maruyama(mu, sigma, x0, T, N):
         X[i] = X[i - 1] + mu * X[i - 1] * dt + sigma * X[i - 1] * dW
     return t, X
 
-
+def path_simulation(mu, sigma, x0, T, N):
+    """
+    Let's say T is in years and N is the number of time steps
+    """
+    if isinstance(x0, float):
+        x0 = np.array([x0])
+    d = len(x0)
+    dt = T / N # length of a time step 
+    X = np.zeros(shape=(N+1, d))
+    X[0,:] = x0
+    for i in range(1, N+1):
+        dW = np.sqrt(dt) * np.random.randn(d)
+        X[i,:] = X[i-1,:] * np.exp(mu * dt + np.linalg.cholesky(sigma) @ dW)
+    return X 
+    
+    
 
 ####### méthode 2 - génére des FBM #####
 
