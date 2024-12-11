@@ -84,10 +84,6 @@ def training_with_model(data_used, model, optimizer, initial_train_years=4, retr
         alloc_col = f"{col}_alloc"
         result[alloc_col] = np.nan
 
-    #model = NN_Sharpe(input_size, hidden_size, output_size, num_layers, model_name)
-    #optimizer = torch.optim.Adam(model.parameters(), lr=0.0001, weight_decay=0.2)
-    
-    #scheduler_global = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=0.8)
     periods_train, periods_invest = generate_training_periods(data_used, initial_train_years, retrain_years)
 
     for i in range(len(periods_train)):
@@ -197,7 +193,7 @@ def training(data_used, input_size,
             
             loss_epoch = sum(loss) / len(loss)
             print(f'epoch {epoch}, loss = {loss_epoch}')
-            global_loss.append(global_loss)
+            global_loss.append(loss_epoch)
 
 
         with torch.no_grad():
