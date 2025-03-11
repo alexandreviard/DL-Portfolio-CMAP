@@ -113,7 +113,7 @@ class FinancialDataset:
         mu = returns.mean(axis=0)
         Sigma = np.cov(returns, rowvar=False)  
 
-        synthetic_returns = np.random.multivariate_normal(mu, Sigma, size=(self.n_synthetic, self.n_simul)) # dim (n_assets, n_dates, n_simul)
+        synthetic_returns = np.random.multivariate_normal(mu, Sigma, size=(self.n_synthetic, self.n_simul)) # dim (n_dates, n_simul, n_assets)
 
         # on bascule les dimensions dans l'ordre canonique (n_simul, n_dates, n_assets)
         synthetic_returns = np.transpose(synthetic_returns, (1, 0, 2))
