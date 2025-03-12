@@ -107,13 +107,14 @@ class FinancialDataset:
         data simulée selon une loi normale multivariée calibrée sur les données 
         renvoie un tenseur de dim (n_simul, n_dates, n_assets)
         """
+        np.random.seed(self.randomstate)
         returns = self._raw_data['returns'].values
 
         # échelle journalier
         mu = returns.mean(axis=0)
         Sigma = np.cov(returns, rowvar=False)  
 
-        synthetic_returns = np.random.multivariate_normal(mu, Sigma, size=(self.n_synthetic, self.n_simul)) # dim (n_assets, n_dates, n_simul)
+        synthetic_returns = np.random.multivariate_normal(mu, Sigma, size=(self.n_simul, self.n_synthetic)) # dim (n_assets, n_dates, n_simul)
 
         # on bascule les dimensions dans l'ordre canonique (n_simul, n_dates, n_assets)
         synthetic_returns = np.transpose(synthetic_returns, (1, 0, 2))
@@ -153,34 +154,48 @@ class DataHandler:
         """
         self.dataset = dataset
         self.start_date = start_date
-        self.date_range = pd.date_range(start=start_date, periods=dataset.shape[1], freq="D")
 
-    def get_periods(self, initial_train_years:int = 4, retrain_years:int = 2, unit:str = "years") -> List[Tuple[pd.Timestamp, pd.Timestamp, pd.Timestamp, pd.Timestamp]]:
-        """Génère les périodes d'entraînement et de test."""
-        unit_mapping = {"years": 252, "months": 21, "weeks": 5, "days": 1}
-        period_length = unit_mapping[unit]
+    def _generate_training_periods(self, initial_train_years=4, retrain_years=2, is_synthetic=False):
+        """
+        Génère les périodes d'entraînement et de test en fonction du type de dataset.
+        - Si `is_synthetic=True`, utilise un `date_range` artificiel basé sur `start_date`.
+        - Sinon, utilise les indices réels du dataset.
+        """
 
-        if initial_train_years * period_length >= len(self.date_range):
-            raise ValueError("Pas assez de données pour l'entraînement initial.")
+        training_periods = []
+        test_periods = []
 
-        periods = []
-        train_start = self.date_range[0]
-        train_end = self.date_range[initial_train_years * period_length]
-        
-        while train_end in self.date_range:
-            test_start = train_end
-            test_end_idx = self.date_range.get_loc(test_start) + retrain_years * period_length
-            
-            if test_end_idx >= len(self.date_range):
-                break  # Stop si pas assez de données restantes
+        # Choix de la source des dates
+        if is_synthetic:
+            date_source = pd.date_range(start=self.start_date, periods=self.dataset.shape[1], freq="B")
+        else:
+            date_source = self.dataset["returns"].index
 
-            test_end = self.date_range[test_end_idx]
-            periods.append((train_start, train_end, test_start, test_end))
+        # Définition de la première période d'entraînement
+        last_date_1st_training = date_source[initial_train_years * 252] # on met la derniere date d'entrainement egale à 252*nbre d'année car apres dans la bcle d'entrainement on va l'exclure (ou pas XD)
+        training_periods.append((date_source[0], last_date_1st_training))
 
-            train_start = test_start
-            train_end = test_end
+        # Première période de test
+        first_invest_date = last_date_1st_training
+        end_date_first_invest = date_source[date_source.get_loc(first_invest_date) + retrain_years * 252]
 
-        return periods
+        test_periods.append((first_invest_date, end_date_first_invest))
+
+        # Nombre total de périodes possibles
+        n_periods = (len(date_source[date_source >= last_date_1st_training])) // (retrain_years * 252)
+
+        training_date = first_invest_date
+
+        for i in range(n_periods - 1):
+            training_date, end_training_date = training_date, date_source[date_source.get_loc(training_date) + retrain_years * 252]
+            invest_date, end_invest_date = end_training_date, date_source[date_source.get_loc(end_training_date) + retrain_years * 252]
+
+            training_periods.append((training_date, end_training_date))
+            test_periods.append((invest_date, end_invest_date))
+
+            training_date = invest_date
+
+        return training_periods, test_periods
 
         
 
