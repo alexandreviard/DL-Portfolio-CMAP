@@ -1,5 +1,7 @@
 import torch
 import torch.nn as nn
+import cvxpy as cp
+
 from typing import Union
 
 class NN_Sharpe(nn.Module):
@@ -36,12 +38,12 @@ class NN_Sharpe(nn.Module):
         self.linear = nn.Linear(hidden_size, output_size)
 
     # A DISCUTER - PEUT ETRE LE RETIRER 
-    # def _forward_rnn(self, x: torch.Tensor) -> torch.Tensor:
-    #     if self.model_name == "LSTM":
-    #         output, (hn, cn) = self.model(x)
-    #     else:
-    #         output, hn = self.model(x)
-    #     return output
+    def _forward_rnn(self, x: torch.Tensor) -> torch.Tensor:
+        if self.model_name == "LSTM":
+            output, (hn, cn) = self.model(x)
+        else:
+            output, hn = self.model(x)
+        return output
 
     def _get_alloc(self, x: torch.Tensor) -> torch.Tensor:
         output = self._forward_rnn(x)
@@ -50,9 +52,9 @@ class NN_Sharpe(nn.Module):
         return torch.softmax(scaled_weights, dim=-1)
 
     # A DISCUTER - PEUT ETRE LE RETIRER 
-    # def get_alloc_last(self, x: torch.Tensor) -> torch.Tensor:
-    #     alloc = self.get_alloc(x)
-    #     return alloc[:, -1, :]
+    def get_alloc_last(self, x: torch.Tensor) -> torch.Tensor:
+        alloc = self.get_alloc(x)
+        return alloc[:, -1, :]
 
     def compute_sharpe_ratio(
         self,
@@ -60,6 +62,8 @@ class NN_Sharpe(nn.Module):
         returns: torch.Tensor,
         eps: float = 1e-12
     ) -> torch.Tensor:
+        print(weights.shape)
+        print(returns.shape)
         weighted_returns = (weights * returns).sum(dim=-1)
         mean_returns = weighted_returns.mean(dim=-1)
         std_returns = weighted_returns.std(dim=-1) + eps
@@ -73,3 +77,17 @@ class NN_Sharpe(nn.Module):
         allocations = self._get_alloc(x)
         loss_batch = self.sharpe_loss(allocations, y)
         return loss_batch.mean()
+
+
+
+class MarkowitzOptimizer:
+    def compute_portfolio(self, mu, Sigma):
+        """
+        Trouve le portefeuille de minimum variance avec Markowitz.
+        """
+        y = cp.Variable(len(mu))
+        objective = cp.Minimize(cp.quad_form(y, Sigma))
+        constraints = [mu.T @ y == 1, y >= 0]
+        problem = cp.Problem(objective, constraints)
+        problem.solve()
+        return y.value
