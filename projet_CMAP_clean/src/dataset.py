@@ -257,13 +257,15 @@ class DataHandler:
         Calcule les fenêtres glissantes pour toutes les simulations.
 
         Retourne une liste de tuples `(X, Y)` pour chaque simulation.
-        shape du return de la forme suivante: [
+        shape du return pour TRAINING de la forme suivante: [
         [ (X1_sim1, Y1_sim1), (X2_sim1, Y2_sim1), ... ],  # Simulation 1
         [ (X1_sim2, Y1_sim2), (X2_sim2, Y2_sim2), ... ],  # Simulation 2
         ...
         [ (X1_simN, Y1_simN), (X2_simN, Y2_simN), ... ]   # Simulation N
         ]
         (n_simul, n_rolling_windows, 2, rolling_window, n_assets) 
+
+        Pour TEST : y a que des X
         """
 
         rolling_data = []
@@ -301,7 +303,7 @@ class DataHandler:
         - `X_test` : Tenseur contenant les données de test.
         - `(start_training, end_training, start_invest, end_invest)` : Périodes correspondantes.
         """
-
+        #self.periods_train, self.periods_invest = self._generate_training_periods(initial_train_years, retrain_years)
         start_training, end_training = self.periods_train[period_index]
         start_invest, end_invest = self.periods_invest[period_index]
 
@@ -318,6 +320,11 @@ class DataHandler:
         Y_tensor = torch.cat([torch.tensor([df[1].numpy() for df in sim_data], dtype=torch.float32) for sim_data in data_training], dim=0)
         X_test = torch.cat([torch.tensor([df.numpy() for df in sim_data], dtype=torch.float32) for sim_data in data_invest], dim=0)
 
+        # shapes : 
+        # X_tensor.shape = (n_simul * n_rolling_windows, rolling_window, n_assets)
+        # Y_tensor.shape = (n_simul * n_rolling_windows, rolling_window, n_assets)
+        # simulations stacked one next to the other
+        # X_test.shape = (n_simul * n_rolling_windows, rolling_window, n_assets)
         dataset = TensorDataset(X_tensor, Y_tensor)
         dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=shuffle)
 
