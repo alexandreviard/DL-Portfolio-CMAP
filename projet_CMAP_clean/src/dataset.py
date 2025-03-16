@@ -196,6 +196,133 @@ class DataHandler:
             training_date = invest_date
 
         return training_periods, test_periods
+    
+    class DataHandler:
+    def __init__(self, dataset: torch.Tensor, start_date: str, is_synthetic: bool = False) -> None:
+        """
+        Gestionnaire des données financières pour plusieurs simulations.
+        
+        Paramètres :
+        - dataset : torch.Tensor : Tenseur (n_simul, n_dates, n_assets).
+        - start_date : str : Date de début des données (ex: '2006-03-01').
+        - is_synthetic : bool : Indique si les données sont synthétiques (True) ou réelles (False).
+        """
+        self.dataset = dataset  # (n_simul, n_dates, n_assets)
+        self.start_date = start_date
+        self.is_synthetic = is_synthetic
+        self.n_simul, self.n_dates, self.n_assets = dataset.shape
+
+        # Génération de la plage de dates
+        self.date_range = pd.date_range(start=self.start_date, periods=self.n_dates, freq="B")
+
+    def _generate_training_periods(self, initial_train_years=4, retrain_years=2) -> Tuple[List, List]:
+        """
+        Génère les périodes d'entraînement et de test en fonction du dataset.
+
+        Retourne :
+        - `training_periods` : Liste des périodes d'entraînement pour chaque simulation.
+        - `test_periods` : Liste des périodes de test pour chaque simulation.
+        """
+
+        training_periods = []
+        test_periods = []
+
+        # Définition de la première période d'entraînement
+        last_date_1st_training = self.date_range[initial_train_years * 252]
+        training_periods.append((self.date_range[0], last_date_1st_training))
+
+        # Première période de test
+        first_invest_date = last_date_1st_training
+        end_date_first_invest = self.date_range[self.date_range.get_loc(first_invest_date) + retrain_years * 252]
+        test_periods.append((first_invest_date, end_date_first_invest))
+
+        # Nombre total de cycles possibles
+        n_periods = (len(self.date_range[self.date_range >= last_date_1st_training])) // (retrain_years * 252)
+
+        training_date = first_invest_date
+
+        for _ in range(n_periods - 1):
+            training_date, end_training_date = training_date, self.date_range[self.date_range.get_loc(training_date) + retrain_years * 252]
+            invest_date, end_invest_date = end_training_date, self.date_range[self.date_range.get_loc(end_training_date) + retrain_years * 252]
+
+            training_periods.append((training_date, end_training_date))
+            test_periods.append((invest_date, end_invest_date))
+
+            training_date = invest_date
+
+        return training_periods, test_periods
+
+    def _compute_data(self, start, end, rolling_window=50, overlap=True, training=True) -> List[Tuple]:
+        """
+        Calcule les fenêtres glissantes pour toutes les simulations.
+
+        Retourne une liste de tuples `(X, Y)` pour chaque simulation.
+        shape du return de la forme suivante: [
+        [ (X1_sim1, Y1_sim1), (X2_sim1, Y2_sim1), ... ],  # Simulation 1
+        [ (X1_sim2, Y1_sim2), (X2_sim2, Y2_sim2), ... ],  # Simulation 2
+        ...
+        [ (X1_simN, Y1_simN), (X2_simN, Y2_simN), ... ]   # Simulation N
+        ]
+        (n_simul, n_rolling_windows, 2, rolling_window, n_assets) 
+        """
+
+        rolling_data = []
+        idx_start, idx_end = self.date_range.get_loc(start), self.date_range.get_loc(end)
+
+        for sim in range(self.n_simul):  # Boucle sur chaque simulation
+            data = self.dataset[sim, idx_start:idx_end, :].clone()
+
+            sim_rolling_data = []
+            if training:
+                if overlap:
+                    for i in range(len(data), rolling_window + 1, -1):
+                        sim_rolling_data.append((data[i - rolling_window - 1: i - 1, :], data[i - rolling_window: i, :]))
+                else:
+                    for i in range(len(data), rolling_window + 1, -rolling_window):
+                        sim_rolling_data.append((data[i - rolling_window - 1: i - 1, :], data[i - rolling_window: i, :]))
+            else:
+                for i in range(idx_start, idx_end):
+                    sim_rolling_data.append(data[i - rolling_window: i, :])
+
+            rolling_data.append(sim_rolling_data[::-1])
+
+        return rolling_data
+
+    def load_training_periods(self, initial_train_years=4, retrain_years=2):
+        """Charge les périodes d'entraînement et de test pour toutes les simulations."""
+        self.periods_train, self.periods_invest = self._generate_training_periods(initial_train_years, retrain_years)
+
+    def loader_period(self, period_index=0, rolling_window=50, batch_size=32, overlap=True, shuffle=True, verbose=False):
+        """
+        Crée un DataLoader pour toutes les simulations sur une période donnée.
+
+        Retourne :
+        - `dataloader` : DataLoader PyTorch pour l'entraînement.
+        - `X_test` : Tenseur contenant les données de test.
+        - `(start_training, end_training, start_invest, end_invest)` : Périodes correspondantes.
+        """
+
+        start_training, end_training = self.periods_train[period_index]
+        start_invest, end_invest = self.periods_invest[period_index]
+
+        if verbose:
+            print(f'Training period from {start_training} to {end_training}')
+            print(f'Investment period from {start_invest} to {end_invest}')
+
+        # Génération des données d'entraînement et de test pour toutes les simulations
+        data_training = self._compute_data(start=start_training, end=end_training, rolling_window=rolling_window, training=True, overlap=overlap)
+        data_invest = self._compute_data(start=start_invest, end=end_invest, rolling_window=rolling_window, training=False)
+
+        # Conversion en tenseurs PyTorch
+        X_tensor = torch.cat([torch.tensor([df[0].numpy() for df in sim_data], dtype=torch.float32) for sim_data in data_training], dim=0)
+        Y_tensor = torch.cat([torch.tensor([df[1].numpy() for df in sim_data], dtype=torch.float32) for sim_data in data_training], dim=0)
+        X_test = torch.cat([torch.tensor([df.numpy() for df in sim_data], dtype=torch.float32) for sim_data in data_invest], dim=0)
+
+        dataset = TensorDataset(X_tensor, Y_tensor)
+        dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=shuffle)
+
+        return dataloader, X_test, (start_training, end_training, start_invest, end_invest)
+
 
         
 
