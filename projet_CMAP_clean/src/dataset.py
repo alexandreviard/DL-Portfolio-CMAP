@@ -289,7 +289,8 @@ class DataHandler:
             rolling_data.append(sim_rolling_data[::-1])
 
         return rolling_data
-
+    
+    # à supprmier et faut dé-commenter la premiere ligne de la fct loader period
     def load_training_periods(self, initial_train_years=4, retrain_years=2):
         """Charge les périodes d'entraînement et de test pour toutes les simulations."""
         self.periods_train, self.periods_invest = self._generate_training_periods(initial_train_years, retrain_years)
