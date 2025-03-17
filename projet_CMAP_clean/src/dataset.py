@@ -142,63 +142,9 @@ class FinancialDataset:
         """
         return self._raw_data["returns"] 
     
-
-class DataHandler:
-    def __init__(self, dataset: torch.Tensor, start_date: str) -> None:
-        """
-        Gestionnaire des données financières pour l'entraînement d'un modèle.
-        
-        Paramètres :
-        - dataset : torch.Tensor : Tenseur (n_simul, n_dates, n_assets).
-        - start_date : str : Date de début des données (ex: '2006-03-01').
-        """
-        self.dataset = dataset
-        self.start_date = start_date
-
-    def _generate_training_periods(self, initial_train_years=4, retrain_years=2, is_synthetic=False):
-        """
-        Génère les périodes d'entraînement et de test en fonction du type de dataset.
-        - Si `is_synthetic=True`, utilise un `date_range` artificiel basé sur `start_date`.
-        - Sinon, utilise les indices réels du dataset.
-        """
-
-        training_periods = []
-        test_periods = []
-
-        # Choix de la source des dates
-        if is_synthetic:
-            date_source = pd.date_range(start=self.start_date, periods=self.dataset.shape[1], freq="B")
-        else:
-            date_source = self.dataset["returns"].index
-
-        # Définition de la première période d'entraînement
-        last_date_1st_training = date_source[initial_train_years * 252] # on met la derniere date d'entrainement egale à 252*nbre d'année car apres dans la bcle d'entrainement on va l'exclure (ou pas XD)
-        training_periods.append((date_source[0], last_date_1st_training))
-
-        # Première période de test
-        first_invest_date = last_date_1st_training
-        end_date_first_invest = date_source[date_source.get_loc(first_invest_date) + retrain_years * 252]
-
-        test_periods.append((first_invest_date, end_date_first_invest))
-
-        # Nombre total de périodes possibles
-        n_periods = (len(date_source[date_source >= last_date_1st_training])) // (retrain_years * 252)
-
-        training_date = first_invest_date
-
-        for i in range(n_periods - 1):
-            training_date, end_training_date = training_date, date_source[date_source.get_loc(training_date) + retrain_years * 252]
-            invest_date, end_invest_date = end_training_date, date_source[date_source.get_loc(end_training_date) + retrain_years * 252]
-
-            training_periods.append((training_date, end_training_date))
-            test_periods.append((invest_date, end_invest_date))
-
-            training_date = invest_date
-
-        return training_periods, test_periods
     
-    class DataHandler:
-    def __init__(self, dataset: torch.Tensor, start_date: str, is_synthetic: bool = False) -> None:
+class DataHandler:
+    def __init__(self, dataset: torch.Tensor, start_date: str, initial_train_years: int = 4, retrain_years: int = 2, rolling_window: int = 50, batch_size: int=32, overlap: bool=True, shuffle: bool=True, verbose:bool =False, is_synthetic: bool = False) -> None:
         """
         Gestionnaire des données financières pour plusieurs simulations.
         
@@ -211,39 +157,51 @@ class DataHandler:
         self.start_date = start_date
         self.is_synthetic = is_synthetic
         self.n_simul, self.n_dates, self.n_assets = dataset.shape
-
+        self.initial_train_years= initial_train_years
+        self.retrain_years= retrain_years
+        self.periods_train, self.periods_invest = self._generate_training_periods()
+        self.rolling_window = rolling_window
+        self.batch_size = batch_size
+        self.overlap = overlap
+        self.shuffle = shuffle
+        self.verbose = verbose
         # Génération de la plage de dates
         self.date_range = pd.date_range(start=self.start_date, periods=self.n_dates, freq="B")
 
-    def _generate_training_periods(self, initial_train_years=4, retrain_years=2) -> Tuple[List, List]:
+    def _generate_training_periods(self):
         """
-        Génère les périodes d'entraînement et de test en fonction du dataset.
-
-        Retourne :
-        - `training_periods` : Liste des périodes d'entraînement pour chaque simulation.
-        - `test_periods` : Liste des périodes de test pour chaque simulation.
+        Génère les périodes d'entraînement et de test en fonction du type de dataset.
+        - Si `is_synthetic=True`, utilise un `date_range` artificiel basé sur `start_date`.
+        - Sinon, utilise les indices réels du dataset.
         """
 
         training_periods = []
         test_periods = []
 
+        # Choix de la source des dates
+        if self.is_synthetic:
+            date_source = pd.date_range(start=self.start_date, periods=self.dataset.shape[1], freq="B")
+        else:
+            date_source = self.dataset["returns"].index
+
         # Définition de la première période d'entraînement
-        last_date_1st_training = self.date_range[initial_train_years * 252]
-        training_periods.append((self.date_range[0], last_date_1st_training))
+        last_date_1st_training = date_source[self.initial_train_years * 252] # on met la derniere date d'entrainement egale à 252*nbre d'année car apres dans la bcle d'entrainement on va l'exclure (ou pas XD)
+        training_periods.append((date_source[0], last_date_1st_training))
 
         # Première période de test
         first_invest_date = last_date_1st_training
-        end_date_first_invest = self.date_range[self.date_range.get_loc(first_invest_date) + retrain_years * 252]
+        end_date_first_invest = date_source[date_source.get_loc(first_invest_date) + self.retrain_years * 252]
+
         test_periods.append((first_invest_date, end_date_first_invest))
 
-        # Nombre total de cycles possibles
-        n_periods = (len(self.date_range[self.date_range >= last_date_1st_training])) // (retrain_years * 252)
+        # Nombre total de périodes possibles
+        n_periods = (len(date_source[date_source >= last_date_1st_training])) // (self.retrain_years * 252)
 
         training_date = first_invest_date
 
-        for _ in range(n_periods - 1):
-            training_date, end_training_date = training_date, self.date_range[self.date_range.get_loc(training_date) + retrain_years * 252]
-            invest_date, end_invest_date = end_training_date, self.date_range[self.date_range.get_loc(end_training_date) + retrain_years * 252]
+        for i in range(n_periods - 1):
+            training_date, end_training_date = training_date, date_source[date_source.get_loc(training_date) + self.retrain_years * 252]
+            invest_date, end_invest_date = end_training_date, date_source[date_source.get_loc(end_training_date) + self.retrain_years * 252]
 
             training_periods.append((training_date, end_training_date))
             test_periods.append((invest_date, end_invest_date))
@@ -251,7 +209,8 @@ class DataHandler:
             training_date = invest_date
 
         return training_periods, test_periods
-
+    
+    # pas une méthode classe on peut la faire sortir de la classe
     def _compute_data(self, start, end, rolling_window=50, overlap=True, training=True) -> List[Tuple]:
         """
         Calcule les fenêtres glissantes pour toutes les simulations.
@@ -289,13 +248,8 @@ class DataHandler:
             rolling_data.append(sim_rolling_data[::-1])
 
         return rolling_data
-    
-    # à supprmier et faut dé-commenter la premiere ligne de la fct loader period
-    def load_training_periods(self, initial_train_years=4, retrain_years=2):
-        """Charge les périodes d'entraînement et de test pour toutes les simulations."""
-        self.periods_train, self.periods_invest = self._generate_training_periods(initial_train_years, retrain_years)
 
-    def loader_period(self, period_index=0, rolling_window=50, batch_size=32, overlap=True, shuffle=True, verbose=False):
+    def loader_period(self, period_index=0):
         """
         Crée un DataLoader pour toutes les simulations sur une période donnée.
 
@@ -304,17 +258,16 @@ class DataHandler:
         - `X_test` : Tenseur contenant les données de test.
         - `(start_training, end_training, start_invest, end_invest)` : Périodes correspondantes.
         """
-        #self.periods_train, self.periods_invest = self._generate_training_periods(initial_train_years, retrain_years)
         start_training, end_training = self.periods_train[period_index]
         start_invest, end_invest = self.periods_invest[period_index]
 
-        if verbose:
+        if self.verbose:
             print(f'Training period from {start_training} to {end_training}')
             print(f'Investment period from {start_invest} to {end_invest}')
 
         # Génération des données d'entraînement et de test pour toutes les simulations
-        data_training = self._compute_data(start=start_training, end=end_training, rolling_window=rolling_window, training=True, overlap=overlap)
-        data_invest = self._compute_data(start=start_invest, end=end_invest, rolling_window=rolling_window, training=False)
+        data_training = self._compute_data(start=start_training, end=end_training, rolling_window=self.rolling_window, training=True, overlap=self.overlap)
+        data_invest = self._compute_data(start=start_invest, end=end_invest, rolling_window=self.rolling_window, training=False)
 
         # Conversion en tenseurs PyTorch
         X_tensor = torch.cat([torch.tensor([df[0].numpy() for df in sim_data], dtype=torch.float32) for sim_data in data_training], dim=0)
@@ -327,7 +280,7 @@ class DataHandler:
         # simulations stacked one next to the other
         # X_test.shape = (n_simul * n_rolling_windows, rolling_window, n_assets)
         dataset = TensorDataset(X_tensor, Y_tensor)
-        dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=shuffle)
+        dataloader = DataLoader(dataset, batch_size=self.batch_size, shuffle=self.shuffle)
 
         return dataloader, X_test, (start_training, end_training, start_invest, end_invest)
 
