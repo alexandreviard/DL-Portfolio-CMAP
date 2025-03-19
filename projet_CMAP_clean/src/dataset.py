@@ -56,6 +56,7 @@ class FinancialDataset:
         
         self._raw_data = self._load_yf_data(log_returns)
 
+        #des tensors 
         if synthetic:
             self.dataset = self._get_synthetic_data()
         else : 
@@ -114,9 +115,9 @@ class FinancialDataset:
         mu = returns.mean(axis=0)
         Sigma = np.cov(returns, rowvar=False)  
 
-        synthetic_returns = np.random.multivariate_normal(mu, Sigma, size=(self.n_simul, self.n_synthetic)) # dim (n_assets, n_dates, n_simul)
+        synthetic_returns = np.random.multivariate_normal(mu, Sigma, size=(self.n_synthetic, self.n_simul)) # dim (n_assets, n_dates, n_simul) ??
 
-        # on bascule les dimensions dans l'ordre canonique (n_simul, n_dates, n_assets)
+        # on bascule les dimensions dans l'ordre canonique (n_simul, n_dates, n_assets) 
         synthetic_returns = np.transpose(synthetic_returns, (1, 0, 2))
 
         # POUR L'INSTANT ON PREND LE PARTI DE RENVOYER DES TENSEURS SANS LES DONNÉES DE PRIX 
@@ -144,7 +145,7 @@ class FinancialDataset:
     
     
 class DataHandler:
-    def __init__(self, dataset: torch.Tensor, start_date: str, initial_train_years: int = 4, retrain_years: int = 2, rolling_window: int = 50, batch_size: int=32, overlap: bool=True, shuffle: bool=True, verbose:bool =False, is_synthetic: bool = False) -> None:
+    def __init__(self, dataset: FinancialDataset, start_date: str = '2006-03-01', initial_train_years: int = 4, retrain_years: int = 2, rolling_window: int = 50, batch_size: int=32, overlap: bool=True, shuffle: bool=True, verbose:bool =False, is_synthetic: bool = False) -> None:
         """
         Gestionnaire des données financières pour plusieurs simulations.
         
@@ -153,10 +154,11 @@ class DataHandler:
         - start_date : str : Date de début des données (ex: '2006-03-01').
         - is_synthetic : bool : Indique si les données sont synthétiques (True) ou réelles (False).
         """
-        self.dataset = dataset  # (n_simul, n_dates, n_assets)
+        self.dataset = dataset 
+        #self.dataset = dataset  # (n_simul, n_dates, n_assets)
         self.start_date = start_date
         self.is_synthetic = is_synthetic
-        self.n_simul, self.n_dates, self.n_assets = dataset.shape
+        self.n_simul, self.n_dates, self.n_assets = dataset.dataset.shape
         self.initial_train_years= initial_train_years
         self.retrain_years= retrain_years
         self.periods_train, self.periods_invest = self._generate_training_periods()
@@ -180,9 +182,9 @@ class DataHandler:
 
         # Choix de la source des dates
         if self.is_synthetic:
-            date_source = pd.date_range(start=self.start_date, periods=self.dataset.shape[1], freq="B")
+            date_source = pd.date_range(start=self.start_date, periods=self.dataset.dataset.shape[1], freq="B")
         else:
-            date_source = self.dataset["returns"].index
+            date_source = self.dataset._raw_data["returns"].index
 
         # Définition de la première période d'entraînement
         last_date_1st_training = date_source[self.initial_train_years * 252] # on met la derniere date d'entrainement egale à 252*nbre d'année car apres dans la bcle d'entrainement on va l'exclure (ou pas XD)
@@ -210,7 +212,7 @@ class DataHandler:
 
         return training_periods, test_periods
     
-    # pas une méthode classe on peut la faire sortir de la classe
+    # helper function pas vrmt une méthode classe
     def _compute_data(self, start, end, rolling_window=50, overlap=True, training=True) -> List[Tuple]:
         """
         Calcule les fenêtres glissantes pour toutes les simulations.
@@ -231,7 +233,7 @@ class DataHandler:
         idx_start, idx_end = self.date_range.get_loc(start), self.date_range.get_loc(end)
 
         for sim in range(self.n_simul):  # Boucle sur chaque simulation
-            data = self.dataset[sim, idx_start:idx_end, :].clone()
+            data = self.dataset.dataset[sim, idx_start:idx_end, :].clone()
 
             sim_rolling_data = []
             if training:
@@ -270,9 +272,14 @@ class DataHandler:
         data_invest = self._compute_data(start=start_invest, end=end_invest, rolling_window=self.rolling_window, training=False)
 
         # Conversion en tenseurs PyTorch
-        X_tensor = torch.cat([torch.tensor([df[0].numpy() for df in sim_data], dtype=torch.float32) for sim_data in data_training], dim=0)
-        Y_tensor = torch.cat([torch.tensor([df[1].numpy() for df in sim_data], dtype=torch.float32) for sim_data in data_training], dim=0)
-        X_test = torch.cat([torch.tensor([df.numpy() for df in sim_data], dtype=torch.float32) for sim_data in data_invest], dim=0)
+        X_array = np.array([[df[0] for df in sim_data] for sim_data in data_training])
+        Y_array = np.array([[df[1] for df in sim_data] for sim_data in data_training])
+        X_test_array = np.array([[df for df in sim_data] for sim_data in data_invest])
+
+        # Convert to PyTorch tensors efficiently
+        X_tensor = torch.tensor(X_array, dtype=torch.float32)
+        Y_tensor = torch.tensor(Y_array, dtype=torch.float32)
+        X_test = torch.tensor(X_test_array, dtype=torch.float32)
 
         # shapes : 
         # X_tensor.shape = (n_simul * n_rolling_windows, rolling_window, n_assets)
@@ -283,9 +290,3 @@ class DataHandler:
         dataloader = DataLoader(dataset, batch_size=self.batch_size, shuffle=self.shuffle)
 
         return dataloader, X_test, (start_training, end_training, start_invest, end_invest)
-
-
-        
-
-
-
