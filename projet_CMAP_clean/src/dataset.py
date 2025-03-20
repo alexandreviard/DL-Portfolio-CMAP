@@ -39,7 +39,7 @@ class FinancialDataset:
         self,
         tickers: List[str] = ['MC.PA', 'AIR.PA'],  # Airbus et LVMH
         synthetic: bool = True,
-        n_synthetic: int = 2000,
+        n_synthetic: int = 4000,
         n_simul: int = 1,
         start_date: str = '2006-03-01',
         end_date: str = '2020-12-31',
