@@ -36,48 +36,45 @@ class NN_Sharpe(nn.Module):
             batch_first=True
         )
         self.linear = nn.Linear(hidden_size, output_size)
+        self.temperature = temperature
 
-    # A DISCUTER - PEUT ETRE LE RETIRER 
-    def _forward_rnn(self, x: torch.Tensor) -> torch.Tensor:
+
+    def get_alloc(self, x: torch.Tensor) -> torch.Tensor:
         if self.model_name == "LSTM":
-            output, (hn, cn) = self.model(x)
-        else:
-            output, hn = self.model(x)
-        return output
+            output, (hn,cn) = self.model(x)
 
-    def _get_alloc(self, x: torch.Tensor) -> torch.Tensor:
-        output = self._forward_rnn(x)
+        elif self.model_name in ['GRU', 'RNN']:
+            output, hn = self.model(x)
+
         unnormalized_weights = self.linear(output)
         scaled_weights = unnormalized_weights / self.temperature
-        return torch.softmax(scaled_weights, dim=-1)
+
+        normalized_weights = torch.softmax(scaled_weights, dim=-1)
+        return normalized_weights
 
     # A DISCUTER - PEUT ETRE LE RETIRER 
     def get_alloc_last(self, x: torch.Tensor) -> torch.Tensor:
         alloc = self.get_alloc(x)
         return alloc[:, -1, :]
 
-    def compute_sharpe_ratio(
+    def sharpe_loss(
         self,
         weights: torch.Tensor,
         returns: torch.Tensor,
         eps: float = 1e-12
     ) -> torch.Tensor:
-        print(weights.shape)
-        print(returns.shape)
+        #print(weights.shape)
+        #print(returns.shape)
         weighted_returns = (weights * returns).sum(dim=-1)
         mean_returns = weighted_returns.mean(dim=-1)
         std_returns = weighted_returns.std(dim=-1) + eps
-        return mean_returns / std_returns
 
-    def sharpe_loss(self, weights: torch.Tensor, returns: torch.Tensor) -> torch.Tensor:
-        sr = self.compute_sharpe_ratio(weights, returns)
-        return -sr
+        return -mean_returns / std_returns
 
     def forward(self, x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
         allocations = self._get_alloc(x)
         loss_batch = self.sharpe_loss(allocations, y)
         return loss_batch.mean()
-
 
 
 class MarkowitzOptimizer:
