@@ -63,6 +63,7 @@ class NN_Sharpe(nn.Module):
         returns: torch.Tensor,
         eps: float = 1e-12
     ) -> torch.Tensor:
+        # weights : [batch_size, seq_length, output_size]
         #print(weights.shape)
         #print(returns.shape)
         weighted_returns = (weights * returns).sum(dim=-1)
