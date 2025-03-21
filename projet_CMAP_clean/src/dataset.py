@@ -167,25 +167,26 @@ class DataHandler:
         self.overlap = overlap
         self.shuffle = shuffle
         self.verbose = verbose
-        # Génération de la plage de dates
-        self.date_range = pd.date_range(start=self.start_date, periods=self.n_dates, freq="B")
 
     def _generate_training_periods(self):
         """
         Génère les périodes d'entraînement et de test en fonction du type de dataset.
         - Si `is_synthetic=True`, utilise un `date_range` artificiel basé sur `start_date`.
         - Sinon, utilise les indices réels du dataset.
+
+        # retourne deux listes de couples (start, end)
         """
 
         training_periods = []
         test_periods = []
 
-        # Choix de la source des dates
+        # Génération de la plage de dates
         if self.is_synthetic:
-            date_source = pd.date_range(start=self.start_date, periods=self.dataset.dataset.shape[1], freq="B")
+            self.date_range = pd.date_range(start=self.start_date, periods=self.dataset.dataset.shape[1], freq="B")
         else:
-            date_source = self.dataset._raw_data["returns"].index
+            self.date_range = self.dataset._raw_data["returns"].index
 
+        date_source = self.date_range
         # Définition de la première période d'entraînement
         last_date_1st_training = date_source[self.initial_train_years * 252] # on met la derniere date d'entrainement egale à 252*nbre d'année car apres dans la bcle d'entrainement on va l'exclure (ou pas XD)
         training_periods.append((date_source[0], last_date_1st_training))
@@ -224,9 +225,13 @@ class DataHandler:
         ...
         [ (X1_simN, Y1_simN), (X2_simN, Y2_simN), ... ]   # Simulation N
         ]
-        (n_simul, n_rolling_windows, 2, rolling_window, n_assets) 
+        (n_simul, n_rolling_windows, tuple (2)) ou X/Y est de shape (rolling_window, n_assets) 
 
         Pour TEST : y a que des X
+        [
+            [X1_sim1, X2_sim1, X3_sim1, ...],  # Simulation 1
+            [X1_sim2, X2_sim2, X3_sim2, ...],  # Simulation 2
+        ]
         """
 
         rolling_data = []
@@ -245,6 +250,7 @@ class DataHandler:
                         sim_rolling_data.append((data[i - rolling_window - 1: i - 1, :], data[i - rolling_window: i, :]))
             else:
                 for i in range(idx_start, idx_end):
+                    print(data[i - rolling_window: i, :])
                     sim_rolling_data.append(data[i - rolling_window: i, :])
 
             rolling_data.append(sim_rolling_data[::-1])
@@ -280,6 +286,11 @@ class DataHandler:
         X_tensor = torch.tensor(X_array, dtype=torch.float32)
         Y_tensor = torch.tensor(Y_array, dtype=torch.float32)
         X_test = torch.tensor(X_test_array, dtype=torch.float32)
+
+        # Reshape tensors to (n_simul * n_rolling_windows, rolling_window, n_assets)
+        X_tensor = X_tensor.view(-1, self.rolling_window, self.n_assets)
+        Y_tensor = Y_tensor.view(-1, self.rolling_window, self.n_assets)
+        X_test = X_test.view(-1, self.rolling_window, self.n_assets)
 
         # shapes : 
         # X_tensor.shape = (n_simul * n_rolling_windows, rolling_window, n_assets)

@@ -7,9 +7,9 @@ from typing import Union
 class NN_Sharpe(nn.Module):
     def __init__(
         self,
-        input_size: int = 4,
+        input_size: int = 2,
         hidden_size: int = 64,
-        output_size: int = 4,
+        output_size: int = 2,
         num_layers: int = 1,
         model_name: str = 'LSTM',
         temperature: float = 0.1
@@ -52,7 +52,6 @@ class NN_Sharpe(nn.Module):
         normalized_weights = torch.softmax(scaled_weights, dim=-1)
         return normalized_weights
 
-    # A DISCUTER - PEUT ETRE LE RETIRER 
     def get_alloc_last(self, x: torch.Tensor) -> torch.Tensor:
         alloc = self.get_alloc(x)
         return alloc[:, -1, :]
@@ -73,7 +72,7 @@ class NN_Sharpe(nn.Module):
         return -mean_returns / std_returns
 
     def forward(self, x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
-        allocations = self._get_alloc(x)
+        allocations = self.get_alloc(x)
         loss_batch = self.sharpe_loss(allocations, y)
         return loss_batch.mean()
 
