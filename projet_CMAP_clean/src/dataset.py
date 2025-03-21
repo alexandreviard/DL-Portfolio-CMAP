@@ -145,7 +145,7 @@ class FinancialDataset:
     
     
 class DataHandler:
-    def __init__(self, dataset: FinancialDataset, start_date: str = '2006-03-01', initial_train_years: int = 4, retrain_years: int = 2, rolling_window: int = 50, batch_size: int=32, overlap: bool=True, shuffle: bool=True, verbose:bool =False, is_synthetic: bool = False) -> None:
+    def __init__(self, dataset: FinancialDataset, start_date: str = '2006-03-01', initial_train_years: int = 4, retrain_years: int = 2, rolling_window: int = 50, batch_size: int=32, overlap: bool=True, shuffle: bool=True, verbose:bool =True, is_synthetic: bool = False) -> None:
         """
         Gestionnaire des données financières pour plusieurs simulations.
         
@@ -236,7 +236,7 @@ class DataHandler:
 
         rolling_data = []
         idx_start, idx_end = self.date_range.get_loc(start), self.date_range.get_loc(end)
-
+        #print(f"idx_start : {idx_start}, idx_end {idx_end}")
         for sim in range(self.n_simul):  # Boucle sur chaque simulation
             data = self.dataset.dataset[sim, idx_start:idx_end, :].clone()
 
@@ -248,12 +248,13 @@ class DataHandler:
                 else:
                     for i in range(len(data), rolling_window + 1, -rolling_window):
                         sim_rolling_data.append((data[i - rolling_window - 1: i - 1, :], data[i - rolling_window: i, :]))
+                
+                rolling_data.append(sim_rolling_data[::-1])
             else:
                 for i in range(idx_start, idx_end):
-                    print(data[i - rolling_window: i, :])
-                    sim_rolling_data.append(data[i - rolling_window: i, :])
-
-            rolling_data.append(sim_rolling_data[::-1])
+                    sim_rolling_data.append(self.dataset.dataset[sim, i - rolling_window:i, :])
+                    
+                rolling_data.append(sim_rolling_data)
 
         return rolling_data
 

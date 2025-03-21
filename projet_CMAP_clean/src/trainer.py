@@ -46,8 +46,8 @@ class PortfolioTrainer:
         self.model.train()
 
         for batch_x, batch_y in dataloader:
-            print(f"Shape of batch_x: {batch_x.shape}")  # Debugging
-            print(f"Shape of batch_y: {batch_y.shape}")  # Debugging
+            #print(f"Shape of batch_x: {batch_x.shape}")  # Debugging
+            #print(f"Shape of batch_y: {batch_y.shape}")  # Debugging
             batch_x, batch_y = batch_x.to(self.device), batch_y.to(self.device)
 
             if permute_assets:
