@@ -161,8 +161,8 @@ class DataHandler:
         self.n_simul, self.n_dates, self.n_assets = dataset.dataset.shape
         self.initial_train_years= initial_train_years
         self.retrain_years= retrain_years
-        self.periods_train, self.periods_invest = self._generate_training_periods()
         self.rolling_window = rolling_window
+        self.periods_train, self.periods_invest = self._generate_training_periods()
         self.batch_size = batch_size
         self.overlap = overlap
         self.shuffle = shuffle
@@ -184,7 +184,7 @@ class DataHandler:
         if self.is_synthetic:
             self.date_range = pd.date_range(start=self.start_date, periods=self.dataset.dataset.shape[1], freq="B")
         else:
-            self.date_range = self.dataset._raw_data["returns"].index
+            self.date_range = self.dataset._raw_data["returns"].index[self.rolling_window:]
 
         date_source = self.date_range
         # Définition de la première période d'entraînement
