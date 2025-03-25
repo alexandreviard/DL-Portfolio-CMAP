@@ -9,6 +9,9 @@ from typing import Union, List, Dict, Tuple
 
 # A DISCUTER - POUR L'INSTANT ON PREND LE PARTI DE RENVOYER DES TENSEURS SANS LES DONNÉES DE PRIX 
 
+# Fincial dataset ne fait que recuperer les données brutes de YF et ensuite cree des returns synthetiques 
+# (eventuellement plusieurs simulations)
+
 class FinancialDataset:
     """
     Classe gérant la récupération et la préparation de données 
@@ -142,10 +145,14 @@ class FinancialDataset:
         Retourne le DataFrame des rendements journaliers de yf 
         """
         return self._raw_data["returns"] 
-    
+ 
+# DataHandler 
+# genere des periodes de training (couples d'index) 
+# compute data = helper pour la creation du dataloader  
+# utilise un dataloader pytorch 
     
 class DataHandler:
-    def __init__(self, dataset: FinancialDataset, start_date: str = '2006-03-01', initial_train_years: int = 4, retrain_years: int = 2, rolling_window: int = 50, batch_size: int=32, overlap: bool=True, shuffle: bool=True, verbose:bool =True, is_synthetic: bool = False) -> None:
+    def __init__(self, dataset: FinancialDataset, start_date: str = '2006-03-01', initial_train_years: int = 4, retrain_years: int = 2, rolling_window: int = 50, batch_size: int=32, overlap: bool=True, shuffle: bool=True, verbose:bool =True) -> None:
         """
         Gestionnaire des données financières pour plusieurs simulations.
         
@@ -157,7 +164,7 @@ class DataHandler:
         self.dataset = dataset 
         #self.dataset = dataset  # (n_simul, n_dates, n_assets)
         self.start_date = start_date
-        self.is_synthetic = is_synthetic
+        self.is_synthetic = dataset.synthetic
         self.n_simul, self.n_dates, self.n_assets = dataset.dataset.shape
         self.initial_train_years= initial_train_years
         self.retrain_years= retrain_years
