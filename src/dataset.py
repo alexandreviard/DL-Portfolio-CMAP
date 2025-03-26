@@ -134,13 +134,6 @@ class FinancialDataset:
         # on bascule les dimensions dans l'ordre canonique (n_simul, n_dates, n_assets) 
         synthetic_returns = np.transpose(synthetic_returns, (1, 0, 2))
 
-        # POUR L'INSTANT ON PREND LE PARTI DE RENVOYER DES TENSEURS SANS LES DONNÉES DE PRIX 
-        # on crée un date index en cohérence avec le cas données rélles 
-        # date_index = pd.date_range(
-        #     pd.to_datetime(self.start_date),
-        #     pd.to_datetime(self.start_date) + timedelta(self.n_synthetic - 1),
-        #     freq='D'
-        # )
         tensor_returns = torch.tensor(synthetic_returns, dtype=torch.float32)
 
         return tensor_returns
@@ -172,11 +165,17 @@ class DataHandler:
                  overlap: bool=True,
                  shuffle: bool=True,
                  verbose:bool =True,
-                 is_synthetic:bool = False) -> None:
+                 on_synthetic:bool = False) -> None:
         
         self.dataset = dataset 
-        self.is_synthetic = is_synthetic
-        self.n_simul, self.n_dates, self.n_assets = dataset.dataset.shape
+        self.on_synthetic = on_synthetic
+        if self.on_synthetic:
+            self.n_simul = self.dataset.dataset_synthetic.shape[0]
+            self.n_obs = self.dataset.dataset_synthetic.shape[1]
+        else:
+            self.n_simul = self.dataset.dataset.shape[0]
+            self.n_obs = self.dataset.dataset.shape[1]
+        self.n_assets = len(self.dataset.tickers)
         self.initial_train_years= initial_train_years
         self.retrain_years= retrain_years
         self.rolling_window = rolling_window
@@ -192,7 +191,7 @@ class DataHandler:
         training_periods = []
         test_periods = []
 
-        if self.is_synthetic:
+        if self.on_synthetic:
             n_dates = self.dataset.dataset_synthetic.shape[1]
         else:
             n_dates = self.dataset.dataset.shape[1]
@@ -220,49 +219,40 @@ class DataHandler:
         return training_periods, test_periods
 
     
-    def _compute_data(self, start, end, overlap=True, training=True) -> List:
+    def _compute_data(self, start, end, training=True) -> List:
+        
 
         rolling_data = []
         idx_start = start
         idx_end = end
-        if self.is_synthetic: 
+        
+        if self.on_synthetic: 
             data = self.dataset.dataset_synthetic
         else:
             data = self.dataset.dataset
 
         for sim in range(self.n_simul):
-            sim_rolling_data = []
             
             if training:
-                if overlap:
+                if self.overlap:
                     for i in range(start, end):
                         X = data[sim, i - self.rolling_window: i, :]
                         Y = data[sim, i - self.rolling_window+1: i+1, :]
-                        sim_rolling_data.append((X, Y))
+                        rolling_data.append((X, Y))
                 else:
-                    for i in range(self.rolling_window + 1, data.shape[0] + 1, self.rolling_window):
+                    for i in range(start, end, self.rolling_window):
                         X = data[sim, i - self.rolling_window: i, :]
                         Y = data[sim, i - self.rolling_window+1: i+1, :]
-                        sim_rolling_data.append((X, Y))
-                rolling_data.append(sim_rolling_data)
+                        rolling_data.append((X, Y))
             else:
                 for i in range(start, end):
                     X = data[sim, i - self.rolling_window: i, :]
-                    sim_rolling_data.append(X)
-                rolling_data.append(sim_rolling_data)
+                    rolling_data.append(X)
         
         return rolling_data
 
     def load_period(self, period_index=0):
-        """
-        Crée un DataLoader pour toutes les simulations sur une période donnée.
 
-        Retourne :
-        - `dataloader` : DataLoader PyTorch pour l'entraînement.
-        - `X_test` : Tenseur contenant les données de test.
-        - `(start_training, end_training, start_invest, end_invest)` : Périodes correspondantes.
-        """
-        
         start_training, end_training = self.periods_train[period_index]
         start_invest, end_invest = self.periods_invest[period_index]
 
@@ -270,30 +260,21 @@ class DataHandler:
             print(f'Training period from {start_training} to {end_training}')
             print(f'Investment period from {start_invest} to {end_invest}')
 
-        # Génération des données d'entraînement et de test pour toutes les simulations
-        data_training = self._compute_data(start=start_training, end=end_training, training=True, overlap=self.overlap)
+        data_training = self._compute_data(start=start_training, end=end_training, training=True)
         data_invest = self._compute_data(start=start_invest, end=end_invest, training=False)
 
-        # Conversion en tenseurs PyTorch
-        X_array = np.array([[df[0] for df in sim_data] for sim_data in data_training])
-        Y_array = np.array([[df[1] for df in sim_data] for sim_data in data_training])
-        X_test_array = np.array([[df for df in sim_data] for sim_data in data_invest])
+        X_array = np.array([df[0] for df in data_training])
+        Y_array = np.array([df[1] for df in data_training])
+        X_test_array = np.array([df for df in data_invest])
 
-        # Convert to PyTorch tensors efficiently
         X_tensor = torch.tensor(X_array, dtype=torch.float32)
         Y_tensor = torch.tensor(Y_array, dtype=torch.float32)
         X_test = torch.tensor(X_test_array, dtype=torch.float32)
 
-        # Reshape tensors to (n_simul * n_rolling_windows, rolling_window, n_assets)
         X_tensor = X_tensor.view(-1, self.rolling_window, self.n_assets)
         Y_tensor = Y_tensor.view(-1, self.rolling_window, self.n_assets)
         X_test = X_test.view(-1, self.rolling_window, self.n_assets)
 
-        # shapes : 
-        # X_tensor.shape = (n_simul * n_rolling_windows, rolling_window, n_assets)
-        # Y_tensor.shape = (n_simul * n_rolling_windows, rolling_window, n_assets)
-        # simulations stacked one next to the other
-        # X_test.shape = (n_simul * n_rolling_windows, rolling_window, n_assets)
         dataset = TensorDataset(X_tensor, Y_tensor)
         dataloader = DataLoader(dataset, batch_size=self.batch_size, shuffle=self.shuffle)
 

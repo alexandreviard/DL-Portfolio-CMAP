@@ -41,6 +41,7 @@ class PortfolioTrainer:
         self.epochs = epochs
         self.data_handler = data_handler
         self.verbose = verbose
+        
 
     def _train_epoch(
             self,
@@ -75,7 +76,7 @@ class PortfolioTrainer:
             count += 1 
 
         loss_epoch = total_loss / count
-        print(f"Loss_epoch:= {loss_epoch}") 
+        
         return loss_epoch
 
     def train(self) -> None:
@@ -86,13 +87,16 @@ class PortfolioTrainer:
         epochs = self.epochs
         data_handler = self.data_handler
         n_period_train = len(data_handler.periods_train) # periods_train liste de tuples
-        n_obs, n_assets = data_handler.n_dates, data_handler.n_assets
+        n_assets = data_handler.n_assets
+        n_obs = data_handler.n_obs
+        n_simul = data_handler.n_simul
         
         # initialisation des poids 
-        self.weights = np.zeros((n_obs, n_assets))
+        self.weights = np.zeros((n_simul, n_obs, n_assets))
 
         # On boucle sur le nombre de periode d'entrainement 
-        # a chaque periode on calcule la derniere allocation de la periode de test 
+        # a chaque periode on calcule la dern
+        # iere allocation de la periode de test 
 
         
 
@@ -109,27 +113,32 @@ class PortfolioTrainer:
                 for _ in (trange(epochs) if self.verbose else range(epochs)) 
             ]
             
+            print(np.mean(loss_epochs))
+            
             # on récupère le dernier poids de la fenêtre 
             with torch.no_grad():
-                alloc_test = self.model.get_alloc_last(X_test.to(self.device)).cpu()
-
-
-            start_invest_period_i, end_invest_period_i = data_handler.periods_invest[i]
+                alloc_test = self.model.get_alloc_last(X_test.to(self.device)).cpu() # (n_simul*(start-end), n_assets)
+                self.alloc = alloc_test
+                
+            start, end = periods[2], periods[3]
+            print(start,end)
             
-            if i == 0 : 
-                self.weights[:start_invest_period_i, :] = np.ones(n_assets) / n_assets
-
-            self.weights[start_invest_period_i:end_invest_period_i, :] = alloc_test
-
+            for sim in range(n_simul):
+                self.weights[sim, start:end, :] = alloc_test[sim*(end-start) : (sim+1)*(end-start), :].numpy()
+                #print(alloc_test[sim*(end-start) : (sim+1)*(end-start), :].numpy())
+                
+                #print(alloc_test[sim*(end-start) : (sim+1)*(end-start), :].numpy().shape)
 
         #### AJOUT DU MARKOWITZ #### 
 
-        dataset_marko = self.dataset.dataset.squeeze(0).numpy()
+        """dataset_marko = self.dataset.dataset.squeeze(0).numpy()
         batch_size = data_handler.batch_size 
         model_marko = MaxSharpe(batch_size=batch_size, overlap=1, max_sharpe=True)
         model_marko.train(dataset_marko)
         self.weights_markowitz = model_marko.weights
-
+        """
+        #A REVOIR c'est pas bon
+        
         #############  
 
 def simulate_rets_portfolio(self, returns: np.ndarray) -> np.ndarray:
