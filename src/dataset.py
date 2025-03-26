@@ -171,10 +171,11 @@ class DataHandler:
                  batch_size: int=32,
                  overlap: bool=True,
                  shuffle: bool=True,
-                 verbose:bool =True) -> None:
+                 verbose:bool =True,
+                 is_synthetic:bool = False) -> None:
         
         self.dataset = dataset 
-        self.is_synthetic = dataset.synthetic
+        self.is_synthetic = is_synthetic
         self.n_simul, self.n_dates, self.n_assets = dataset.dataset.shape
         self.initial_train_years= initial_train_years
         self.retrain_years= retrain_years
