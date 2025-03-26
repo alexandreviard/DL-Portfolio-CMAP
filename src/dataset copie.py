@@ -69,9 +69,9 @@ class FinancialDataset:
 
             self.dataset_synthetic = self._get_synthetic_data()
             
-            #self._raw_data_synthetic = pd.DataFrame(self.dataset_synthetic.squeeze(0).numpy(),
-            #                                        self._raw_data['returns'].index,
-            #                                        self._raw_data['returns'].columns)
+            self._raw_data_synthetic = pd.DataFrame(self.dataset_synthetic.squeeze(0).numpy(),
+                                                    self._raw_data['returns'].index,
+                                                    self._raw_data['returns'].columns)
         
         else : 
             self.dataset = self._get_market_data()
