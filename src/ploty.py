@@ -1,5 +1,6 @@
 import matplotlib.pyplot as plt
 import numpy as np
+from dataset import FinancialDataset, DataHandler
 
 def plot_markowitz(weights, returns, figsize=(15, 3), savefig=False, save_path="portfolio_markowitz_plot.png"):
     """
@@ -74,3 +75,41 @@ def compute_sharpe(returns):
     print("Sharpe ratio :", round(sharpe, 4))
 
     return sharpe
+
+
+def plot_price_simulations(raw_data :FinancialDataset, synthetic_dataloader : DataHandler):
+    """
+    Pour le moment les indices sont dans le dataloader à revoir après et les mettre dans le FinancialDataset directement
+    """
+    synthetic_data = raw_data.dataset
+    # Convert synthetic data to NumPy (Shape: n_simul, n_dates, n_assets)
+    synthetic_returns = synthetic_data.numpy()  # Shape: (n_simul, n_dates, n_assets)
+
+    # Get the number of simulations, dates, and assets
+    n_simul, n_dates, n_assets = synthetic_returns.shape
+
+    # Get the date index from DataHandler
+    date_range = synthetic_dataloader.date_range
+
+    # Convert Returns to Prices for All Simulations (Assume Initial Price = 100)
+    initial_price = 100
+    synthetic_prices = initial_price * (1 + synthetic_returns).cumprod(axis=1)  # Cumprod over time (axis=1)
+
+    # Plot the price series for each simulation and asset
+    plt.figure(figsize=(12, 6))
+
+    # Use different colors for each simulation and asset
+    colors = plt.get_cmap("tab10", n_simul * n_assets)  # Generate colors
+
+    for sim in range(n_simul):
+        for asset_idx, ticker in enumerate(raw_data.tickers):
+            plt.plot(date_range, synthetic_prices[sim, :, asset_idx], 
+                    label=f"Sim {sim+1} - {ticker}", color=colors(sim * n_assets + asset_idx))
+
+    # Formatting
+    plt.xlabel("Date")
+    plt.ylabel("Synthetic Price")
+    plt.title("Synthetic Stock Price Simulation - Multiple Simulations")
+    plt.legend(fontsize=8, loc="upper left", bbox_to_anchor=(1, 1))  # Legend outside the plot
+    plt.grid()
+    plt.show()
