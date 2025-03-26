@@ -75,16 +75,3 @@ class NN_Sharpe(nn.Module):
         allocations = self.get_alloc(x)
         loss_batch = self.sharpe_loss(allocations, y)
         return loss_batch.mean()
-
-
-class MarkowitzOptimizer:
-    def compute_portfolio(self, mu, Sigma):
-        """
-        Trouve le portefeuille de minimum variance avec Markowitz.
-        """
-        y = cp.Variable(len(mu))
-        objective = cp.Minimize(cp.quad_form(y, Sigma))
-        constraints = [mu.T @ y == 1, y >= 0]
-        problem = cp.Problem(objective, constraints)
-        problem.solve()
-        return y.value
