@@ -15,6 +15,7 @@ class MaxSharpe():
         """ 
         Computes the markowitz solution over the batch 
         data is assumed to be on a daily basis 
+        therefore we annualize the mean and the cov 
         """
         mean_vector = np.mean(batch, axis=0) * 252 
         cov_matrix = np.cov(batch, rowvar=False) * np.sqrt(252) 
@@ -84,6 +85,29 @@ class MaxSharpe():
         for t in range(self.batch_size, n_obs, self.overlap):
             window_returns = returns[t - self.batch_size : t, :]
             w = self._compute_weights(window_returns)
+
+            for day in range(t, min(t + self.overlap, n_obs)):
+                self.weights[day, :] = w
+
+    def train_with_permutations(self, returns: np.ndarray) -> None:
+        """
+        trains the model with permutation of assets at each training 
+        """
+        n_obs, n_assets = returns.shape
+        self.weights = np.zeros((n_obs, n_assets))
+
+        # Initialisation des poids (avant la première fenêtre)
+        for t in range(self.batch_size):
+            self.weights[t, :] = np.ones(n_assets) / n_assets
+
+        # On avance par pas de self.overlap jours :
+        # On permute les assets à chaque calcul de poids 
+        index = np.arange(n_assets)
+        for t in range(self.batch_size, n_obs, self.overlap):
+            window_returns = returns[t - self.batch_size : t, :]
+            index = np.random.permutation(index) 
+            window_returns_permutation = window_returns[:, index]
+            w = self._compute_weights(window_returns_permutation)
 
             for day in range(t, min(t + self.overlap, n_obs)):
                 self.weights[day, :] = w
