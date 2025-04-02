@@ -47,13 +47,13 @@ class FinancialDataset:
         end_date: str = '2020-12-31',
         log_returns: bool = False, 
         n_synthetic: int = None,
-        randomstate: Union[int, None] = 42
+        randomstate: Union[int, None] = 42,
     ) -> None:
 
         
         self.tickers = tickers
         self.synthetic = synthetic
-        self.n_synthetic = None
+        self.n_synthetic = n_synthetic
         self.n_simul = n_simul
         self.start_date = start_date
         self.end_date = end_date
@@ -68,11 +68,7 @@ class FinancialDataset:
                 self.n_synthetic = self.dataset.shape[1]
 
             self.dataset_synthetic = self._get_synthetic_data()
-            
-            #self._raw_data_synthetic = pd.DataFrame(self.dataset_synthetic.squeeze(0).numpy(),
-            #                                        self._raw_data['returns'].index,
-            #                                        self._raw_data['returns'].columns)
-        
+
         else : 
             self.dataset = self._get_market_data()
 
@@ -126,10 +122,10 @@ class FinancialDataset:
         returns = self._raw_data['returns'].values
 
         # échelle journalier
-        mu = returns.mean(axis=0)
-        Sigma = np.cov(returns, rowvar=False)  
+        self.mu = returns.mean(axis=0)
+        self.Sigma = np.cov(returns, rowvar=False)  
 
-        synthetic_returns = np.random.multivariate_normal(mu, Sigma, size=(self.n_synthetic, self.n_simul)) # dim (n_assets, n_dates, n_simul) ??
+        synthetic_returns = np.random.multivariate_normal(self.mu, self.Sigma, size=(self.n_synthetic, self.n_simul)) # dim (n_assets, n_dates, n_simul) ??
 
         # on bascule les dimensions dans l'ordre canonique (n_simul, n_dates, n_assets) 
         synthetic_returns = np.transpose(synthetic_returns, (1, 0, 2))
@@ -175,6 +171,7 @@ class DataHandler:
         else:
             self.n_simul = self.dataset.dataset.shape[0]
             self.n_obs = self.dataset.dataset.shape[1]
+            
         self.n_assets = len(self.dataset.tickers)
         self.initial_train_years= initial_train_years
         self.retrain_years= retrain_years
@@ -236,6 +233,7 @@ class DataHandler:
             if training:
                 if self.overlap:
                     for i in range(start, end):
+
                         X = data[sim, i - self.rolling_window: i, :]
                         Y = data[sim, i - self.rolling_window+1: i+1, :]
                         rolling_data.append((X, Y))

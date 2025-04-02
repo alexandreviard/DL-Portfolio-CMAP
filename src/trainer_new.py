@@ -4,8 +4,10 @@ import numpy as np
 from torch.utils.data import DataLoader, TensorDataset
 import torch.optim as optim
 from tqdm import trange
-
+import matplotlib.pyplot as plt
+plt.style.use('fivethirtyeight')
 from markowitz import MaxSharpe
+from typing import Union, List, Dict, Tuple
 
 
 # A QUOI SERT LE SCHEDULER 
@@ -32,6 +34,7 @@ class PortfolioTrainer:
             epochs: int = 200,
             verbose: bool = True
             ) -> None:
+        self.weight_decay = weight_decay
         self.model = model
         self.dataset = data_handler.dataset # tenseur 3D (n_simul, n_obs, n_assets)
         self.device = torch.device(device if torch.cuda.is_available() else "cpu")
@@ -41,7 +44,12 @@ class PortfolioTrainer:
         self.epochs = epochs
         self.data_handler = data_handler
         self.verbose = verbose
-        
+        self.markowitz = MaxSharpe()
+        self.on_synthetic = self.data_handler.on_synthetic
+        self.batch_size = self.data_handler.batch_size
+        if self.on_synthetic:
+            self.th_weights_sharpe = self.markowitz._max_sharpe_torch(self.data_handler.dataset.Sigma, self.data_handler.dataset.mu)
+            self.th_weights_marko = self.markowitz._markowitz_opt(self.data_handler.dataset.Sigma, self.data_handler.dataset.mu)
 
     def _train_epoch(
             self,
@@ -57,13 +65,15 @@ class PortfolioTrainer:
 
         if isinstance(self.model, torch.nn.Module):
             self.model.train() 
+        
 
-        for batch_x, batch_y in dataloader:
-            batch_x, batch_y = batch_x.to(self.device), batch_y.to(self.device)
             
-            # on permute chaque batch au sein d'une epoch  
+        for batch_x, batch_y in dataloader:
+
+            batch_x, batch_y = batch_x.to(self.device), batch_y.to(self.device)            
             if permute_assets:
-                perm = torch.randperm(batch_x.shape[-1])
+
+                perm = torch.randperm(self.data_handler.n_assets)
                 batch_x = batch_x[:, :, perm]  
                 batch_y = batch_y[:, :, perm]
             
@@ -79,10 +89,8 @@ class PortfolioTrainer:
         
         return loss_epoch
 
-    def train(self) -> None:
-        """
-        
-        """
+    def train(self, compute_marko_weights: List=None) -> None:
+
         permute_assets = self.permute_assets
         epochs = self.epochs
         data_handler = self.data_handler
@@ -92,7 +100,15 @@ class PortfolioTrainer:
         n_simul = data_handler.n_simul
         
         # initialisation des poids 
-        self.weights = np.zeros((n_simul, n_obs, n_assets))
+        self.weights_model = np.zeros((n_simul, n_obs, n_assets))
+        if compute_marko_weights:
+            if 'sharpe' in compute_marko_weights:
+                self.weights_sharpe = np.zeros((n_simul, n_obs, n_assets))
+            if 'marko' in compute_marko_weights:
+                self.weights_markow = np.zeros((n_simul, n_obs, n_assets))
+            if 'sharpe_torch' in compute_marko_weights:
+                self.weights_sharpe = np.zeros((n_simul, n_obs, n_assets))
+                
 
         # On boucle sur le nombre de periode d'entrainement 
         # a chaque periode on calcule la dern
@@ -120,45 +136,134 @@ class PortfolioTrainer:
                 alloc_test = self.model.get_alloc_last(X_test.to(self.device)).cpu() # (n_simul*(start-end), n_assets)
                 self.alloc = alloc_test
                 
+            if compute_marko_weights:
+                ws_sharpe = []
+                ws_marko = []
+                print(X_test.shape)
+                for j in trange(X_test.shape[0]):
+                    if 'sharpe' in compute_marko_weights:
+                        w_sharpe = self.markowitz._compute_weights(batch=X_test[j].numpy(), method='sharpe')
+                        ws_sharpe.append(w_sharpe)
+                    if 'sharpe_torch' in compute_marko_weights:
+                        w_sharpe = self.markowitz._compute_weights(batch=X_test[j].numpy(), method='sharpe')
+                        ws_sharpe.append(w_sharpe)
+                    if 'marko' in compute_marko_weights:
+                        w_marko = self.markowitz._compute_weights(batch=X_test[j].numpy(), method='marko')
+                        ws_marko.append(w_marko)
+                
+                ws_sharpe = np.asarray(ws_sharpe)
+                ws_marko = np.asarray(ws_marko)
+        
+                
             start, end = periods[2], periods[3]
             print(start,end)
             
-            for sim in range(n_simul):
-                self.weights[sim, start:end, :] = alloc_test[sim*(end-start) : (sim+1)*(end-start), :].numpy()
-                #print(alloc_test[sim*(end-start) : (sim+1)*(end-start), :].numpy())
+            for sim in trange(n_simul):
+                self.weights_model[sim, start:end, :] = alloc_test[sim*(end-start) : (sim+1)*(end-start), :].numpy()
+                if compute_marko_weights:
+                    self.weights_sharpe[sim, start:end, :] = ws_sharpe[sim*(end-start) : (sim+1)*(end-start), :]
+                    self.weights_markow[sim, start:end, :] = ws_marko[sim*(end-start) : (sim+1)*(end-start), :]
+
+
+
+        
+
+    def plot_weights(self, type_w='model', th_weights=None):
+        
+        if not hasattr(self, 'weights_model'):
+            raise ValueError("Le modèle doit d'abord être entraîné pour accéder aux poids")
+
+        if type_w == 'model':
+            weights = self.weights_model
+        elif type_w == 'sharpe':
+            weights = self.weights_sharpe
+        elif type_w == 'marko':
+            weights = self.weights_markow
+        else:
+            raise ValueError("type_w doit être 'model', 'sharpe' ou 'marko'")
+
+        if self.on_synthetic:
+
+            ncols = 4
+            nrows = int(np.ceil(self.data_handler.n_simul / ncols))
+            width_per_subplot = 4
+            height_per_subplot = 3
+            figsize = (ncols * width_per_subplot, nrows * height_per_subplot)
+            fig, ax = plt.subplots(ncols=ncols, nrows=nrows, figsize=figsize)
+            ax = ax.flatten()
+
+            for sim in range(self.data_handler.n_simul):
+                w = weights[sim]
+                T = w.shape[0]
+                time = np.arange(T)
+                ax[sim].stackplot(time, w.T, labels=self.data_handler.dataset.tickers)
+                ax[sim].set_title(f"Sim {sim}")
+                ax[sim].set_xlabel("Time")
+                ax[sim].set_ylabel("Poids")
+                ax[sim].legend(prop={'size':7})
+
+                if th_weights=='sharpe':
+                    cumsum_weights = self.th_weights_sharpe.copy()
+                    cumsum_weights.sort()
+                    cumsum_weights = cumsum_weights.cumsum()
+                    self.tata = cumsum_weights
+                    for w in cumsum_weights:
+                        ax[sim].axhline(w, color='black', linewidth=2, linestyle="--")
+                        
+                elif th_weights=='marko':
+                    cumsum_weights = self.th_weights_marko.copy()
+                    cumsum_weights.sort()
+                    cumsum_weights = cumsum_weights.cumsum()
+                    self.tata = cumsum_weights
+                    for w in cumsum_weights:
+                        ax[sim].axhline(w, color='black', linewidth=2, linestyle="--")
+                    
+            if type_w == 'model':
+                fig.suptitle(f"Poids pour {type_w}", fontsize=16)
+
+                params_text = (
+                    f"hidden_size: {self.model.hidden_size}, batch_size: {self.batch_size}, num_layers: {self.model.num_layers}, permute : {self.permute_assets}\n"
+                    f"rolling_window: {self.data_handler.rolling_window}, overlap: {self.data_handler.overlap}, epochs : {self.epochs}, "
+                    f"shuffle: {self.data_handler.shuffle}, weight_decay: {self.weight_decay}"
+                )
+
+                fig.subplots_adjust(top=0.75)
+                fig.text(0.5, 0.81, params_text, ha='center', fontsize=10)
                 
-                #print(alloc_test[sim*(end-start) : (sim+1)*(end-start), :].numpy().shape)
+            else:
+                fig.suptitle(f'Poids pour {type_w}\n')
+                
+            for i in range(self.data_handler.n_simul, len(ax)):
+                fig.delaxes(ax[i])
+            
+            fig.tight_layout()
 
-        #### AJOUT DU MARKOWITZ #### 
-
-        """dataset_marko = self.dataset.dataset.squeeze(0).numpy()
-        batch_size = data_handler.batch_size 
-        model_marko = MaxSharpe(batch_size=batch_size, overlap=1, max_sharpe=True)
-        model_marko.train(dataset_marko)
-        self.weights_markowitz = model_marko.weights
-        """
-        #A REVOIR c'est pas bon
+        else:
+            w = weights[0] 
+            T = w.shape[0]
+            time = np.arange(T)
+            plt.figure(figsize=(10, 5))
+            plt.stackplot(time, w.T)
+            plt.title("Poids du portefeuille sur données réelles")
+            plt.xlabel("Time")
+            plt.ylabel("Poids")
+            plt.tight_layout()
+            plt.show()
         
-        #############  
-
-def simulate_rets_portfolio(self, returns: np.ndarray) -> np.ndarray:
-        """
-        Calcule le rendement du portefeuille jour par jour en utilisant self.weights,
-        selon la convention B (on applique les poids du jour t-1 au jour t).
-        """
-        n_obs, _ = returns.shape
-        port_rets = np.zeros(n_obs)
-        port_rets[0] = returns[0] @ self.weights[0, :]
         
-        for t in range(1, n_obs):
-            port_rets[t] = returns[t] @ self.weights[t - 1, :]
 
-        return port_rets
+        
 
+    def simulate_rets_portfolio(self, returns: np.ndarray) -> np.ndarray:
+            """
+            Calcule le rendement du portefeuille jour par jour en utilisant self.weights,
+            selon la convention B (on applique les poids du jour t-1 au jour t).
+            """
+            n_obs, _ = returns.shape
+            port_rets = np.zeros(n_obs)
+            port_rets[0] = returns[0] @ self.weights[0, :]
+            
+            for t in range(1, n_obs):
+                port_rets[t] = returns[t] @ self.weights[t - 1, :]
 
-
-
-
-    
-
-
+            return port_rets

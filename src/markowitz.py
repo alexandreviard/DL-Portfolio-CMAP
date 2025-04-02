@@ -1,7 +1,8 @@
 import numpy as np 
 import pandas as pd 
 import matplotlib.pyplot as plt 
-import scipy.optimize as opt  
+import scipy.optimize as opt 
+import torch
 
 
 class MaxSharpe():
@@ -11,17 +12,19 @@ class MaxSharpe():
         self.batch_size = batch_size
         self.max_sharpe = max_sharpe
 
-    def _compute_weights(self, batch:np.ndarray) -> np.ndarray:
+    def _compute_weights(self, batch:np.ndarray, method:str='sharpe') -> np.ndarray:
         """ 
         Computes the markowitz solution over the batch 
         data is assumed to be on a daily basis 
         therefore we annualize the mean and the cov 
         """
-        mean_vector = np.mean(batch, axis=0) * 252 
-        cov_matrix = np.cov(batch, rowvar=False) * np.sqrt(252) 
-        if self.max_sharpe:
+        mean_vector = np.mean(batch, axis=0)
+        cov_matrix = np.cov(batch, rowvar=False)
+        if method=='sharpe':
             w = self._max_sharpe_opt(cov_matrix, mean_vector)
-        else :
+        elif method=="sharpe_torch" :
+            w = self._max_sharpe_torch(cov_matrix, mean_vector)
+        elif method=="marko" :
             w = self._markowitz_opt(cov_matrix, mean_vector)
         return w 
     
@@ -52,7 +55,7 @@ class MaxSharpe():
     def _max_sharpe_opt(self, cov_matrix:np.ndarray, mean_vector:np.ndarray) -> float:
         
         def target_func(weights:np.ndarray) -> float:
-            f = mean_vector @ weights / np.sqrt(weights.T @ cov_matrix @ weights)
+            f = mean_vector @ weights / weights.T @ cov_matrix @ weights
             return -f # on veut un problème de minimisation
         
         n_assets = len(mean_vector)  
@@ -69,6 +72,44 @@ class MaxSharpe():
             )
 
         return res.x 
+    
+    def _max_sharpe_torch(self, cov_matrix, mean_vector):
+        class MaxSharpeLongOnly(torch.nn.Module):
+            def __init__(self, d):
+                    super().__init__()
+                    self.w = torch.nn.Parameter(torch.ones(d))
+
+            @property
+            def weights(self):
+                return torch.softmax(self.w, dim=0)
+
+        def sharpe_loss(weights, cov_matrix, mean_vector):
+            returns = torch.einsum("d, d -> ", weights, mean_vector)
+            risk    = torch.sqrt(torch.einsum("d, dc, c -> ", weights, cov_matrix, weights))
+            sharpe  = returns / risk
+            return -sharpe
+        d=len(mean_vector)
+        model = MaxSharpeLongOnly(d)
+        adam  = torch.optim.Adam(model.parameters(), lr=1e-1)
+
+        torch_mu  = torch.from_numpy(mean_vector).float()
+        torch_cov = torch.from_numpy(cov_matrix).float()
+
+        num_steps = 100
+        sharpe_log = np.zeros(shape=num_steps)
+        weights_log = np.zeros(shape=(num_steps, d))
+
+        for s in range(num_steps):
+            adam.zero_grad()
+            loss = sharpe_loss(model.weights, torch_cov, torch_mu)
+            loss.backward()
+            adam.step()
+
+            sharpe_log[s]  = -loss
+            weights_log[s] = model.weights.detach().numpy()
+            
+        return weights_log[-1]
+
 
     def train(self, returns: np.ndarray) -> None:
         """

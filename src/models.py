@@ -35,8 +35,12 @@ class NN_Sharpe(nn.Module):
             num_layers=num_layers,
             batch_first=True
         )
+        
+        self.hidden_size = hidden_size
+        self.num_layers = num_layers
         self.linear = nn.Linear(hidden_size, output_size)
         self.temperature = temperature
+        self.ly1 = nn.LayerNorm(hidden_size)
 
 
     def get_alloc(self, x: torch.Tensor) -> torch.Tensor:
@@ -46,7 +50,7 @@ class NN_Sharpe(nn.Module):
         elif self.model_name in ['GRU', 'RNN']:
             output, hn = self.model(x)
 
-        unnormalized_weights = self.linear(output)
+        unnormalized_weights = self.linear(self.ly1(output))
         scaled_weights = unnormalized_weights / self.temperature
 
         normalized_weights = torch.softmax(scaled_weights, dim=-1)
@@ -69,7 +73,7 @@ class NN_Sharpe(nn.Module):
         mean_returns = weighted_returns.mean(dim=-1)
         std_returns = weighted_returns.std(dim=-1) + eps
 
-        return -mean_returns / std_returns
+        return -mean_returns / torch.exp(std_returns)
 
     def forward(self, x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
         allocations = self.get_alloc(x)
