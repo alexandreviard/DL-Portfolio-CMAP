@@ -48,8 +48,8 @@ class PortfolioTrainer:
         self.on_synthetic = self.data_handler.on_synthetic
         self.batch_size = self.data_handler.batch_size
         if self.on_synthetic:
-            self.th_weights_sharpe = self.markowitz._max_sharpe_torch(self.data_handler.dataset.Sigma, self.data_handler.dataset.mu)
-            self.th_weights_marko = self.markowitz._markowitz_opt(self.data_handler.dataset.Sigma, self.data_handler.dataset.mu)
+            self.th_weights_sharpe = self.markowitz._max_torch_opt(self.data_handler.dataset.Sigma, self.data_handler.dataset.mu, 'sharpe')
+            self.th_weights_marko = self.markowitz._max_torch_opt(self.data_handler.dataset.Sigma, self.data_handler.dataset.mu, 'marko')
 
     def _train_epoch(
             self,
@@ -153,8 +153,8 @@ class PortfolioTrainer:
                     if 'sharpe_torch' in compute_marko_weights:
                         w_sharpe = self.markowitz._compute_weights(batch=X_test[j].numpy(), method='sharpe_torch')
                         ws_sharpe.append(w_sharpe)
-                    if 'marko' in compute_marko_weights:
-                        w_marko = self.markowitz._compute_weights(batch=X_test[j].numpy(), method='marko')
+                    if 'marko_torch' in compute_marko_weights:
+                        w_marko = self.markowitz._compute_weights(batch=X_test[j].numpy(), method='marko_torch')
                         ws_marko.append(w_marko)
                 
                 ws_sharpe = np.asarray(ws_sharpe)

@@ -20,12 +20,15 @@ class MaxSharpe():
         """
         mean_vector = np.mean(batch, axis=0)
         cov_matrix = np.cov(batch, rowvar=False)
-        if method=='sharpe':
-            w = self._max_sharpe_opt(cov_matrix, mean_vector)
-        elif method=="sharpe_torch" :
-            w = self._max_sharpe_torch(cov_matrix, mean_vector)
+        
+        if method=="sharpe_torch" :
+            w = self._max_torch_opt(cov_matrix, mean_vector, 'sharpe')
+        elif method=="marko_torch" :
+            w = self._max_torch_opt(cov_matrix, mean_vector, 'marko', aversion=1)
         elif method=="marko" :
             w = self._markowitz_opt(cov_matrix, mean_vector)
+        elif method=="sharpe" :
+            w = self._max_sharpe_opt(cov_matrix, mean_vector)
         return w 
     
     def _markowitz_opt(self, cov_matrix:np.ndarray, mean_vector:np.ndarray) -> float:
@@ -76,7 +79,8 @@ class MaxSharpe():
 
         return res.x 
     
-    def _max_sharpe_torch(self, cov_matrix, mean_vector):
+    
+    def _max_torch_opt(self, cov_matrix, mean_vector, type_max, aversion=1):
         """ 
         optimise le sharpe avec Adam 
         """
@@ -90,13 +94,20 @@ class MaxSharpe():
                 return torch.softmax(self.w, dim=0)
 
         def sharpe_loss(weights, cov_matrix, mean_vector):
-            returns = torch.einsum("d, d -> ", weights, mean_vector)
-            risk    = torch.sqrt(torch.einsum("d, dc, c -> ", weights, cov_matrix, weights))
+            returns = torch.sum(weights*mean_vector)
+            risk    = torch.sqrt(weights.T@cov_matrix@weights)
             sharpe  = returns / risk
             return -sharpe
+        
+        def marko_loss(weights, cov_matrix, mean_vector, aversion):
+            returns = torch.sum(weights*mean_vector)
+            risk    = weights.T@cov_matrix@weights
+            sharpe  = returns - aversion/2 * risk
+            return -sharpe
+        
         d=len(mean_vector)
         model = MaxSharpeLongOnly(d)
-        adam  = torch.optim.Adam(model.parameters(), lr=1e-1)
+        adam  = torch.optim.Adam(model.parameters(), lr=1e-3)
 
         torch_mu  = torch.from_numpy(mean_vector).float()
         torch_cov = torch.from_numpy(cov_matrix).float()
@@ -107,7 +118,10 @@ class MaxSharpe():
 
         for s in range(num_steps):
             adam.zero_grad()
-            loss = sharpe_loss(model.weights, torch_cov, torch_mu)
+            if type_max == 'sharpe':
+                loss = sharpe_loss(model.weights, torch_cov, torch_mu)
+            elif type_max == 'marko':
+                loss = marko_loss(model.weights, torch_cov, torch_mu, aversion)
             loss.backward()
             adam.step()
 
