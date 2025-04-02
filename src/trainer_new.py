@@ -6,7 +6,7 @@ import torch.optim as optim
 from tqdm import trange
 import matplotlib.pyplot as plt
 plt.style.use('fivethirtyeight')
-from markowitz import MaxSharpe
+from src.markowitz import MaxSharpe
 from typing import Union, List, Dict, Tuple
 
 
@@ -18,7 +18,7 @@ from torch.utils.data import DataLoader, TensorDataset
 from tqdm import trange
 from typing import List, Tuple
 import pandas as pd
-from dataset import DataHandler
+from src.dataset import DataHandler
 #from src.dataset import DataHandler
 
 class PortfolioTrainer:
