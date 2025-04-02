@@ -106,7 +106,7 @@ class PortfolioTrainer:
              #on compute les weights pour max 8 simulations
             if 'sharpe' in compute_marko_weights:
                 self.weights_sharpe = np.zeros((self.nb_wsim_computed, n_obs, n_assets))
-            if 'marko' in compute_marko_weights:
+            if 'marko' or 'marko_torch' in compute_marko_weights:
                 self.weights_markow = np.zeros((self.nb_wsim_computed, n_obs, n_assets))
             if 'sharpe_torch' in compute_marko_weights:
                 self.weights_sharpe = np.zeros((self.nb_wsim_computed, n_obs, n_assets))
@@ -205,7 +205,6 @@ class PortfolioTrainer:
 
                 if th_weights=='sharpe':
                     cumsum_weights = self.th_weights_sharpe.copy()
-                    cumsum_weights.sort()
                     cumsum_weights = cumsum_weights.cumsum()
                     self.tata = cumsum_weights
                     for w in cumsum_weights:
@@ -213,7 +212,6 @@ class PortfolioTrainer:
                         
                 elif th_weights=='marko':
                     cumsum_weights = self.th_weights_marko.copy()
-                    cumsum_weights.sort()
                     cumsum_weights = cumsum_weights.cumsum()
                     self.tata = cumsum_weights
                     for w in cumsum_weights:
@@ -238,14 +236,14 @@ class PortfolioTrainer:
                     f'{ticker} : {weight:.2%}' 
                     for ticker, weight in zip(self.data_handler.dataset.tickers, self.th_weights_marko)
                 )
-                fig.suptitle(f'Poids pour {type_w}\nPoids optimaux théoriques :\n{weights_str}')
+                fig.suptitle(f'Poids pour {type_w}\nPoids optimaux théoriques :\n{weights_str}', size=7)
 
             elif type_w == 'sharpe':
                 weights_str = '\n'.join(
                     f'{ticker} : {weight:.2%}' 
                     for ticker, weight in zip(self.data_handler.dataset.tickers, self.th_weights_sharpe)
                 )
-                fig.suptitle(f'Poids pour {type_w}\nPoids optimaux théoriques :\n{weights_str}')
+                fig.suptitle(f'Poids pour {type_w}\nPoids optimaux théoriques :\n{weights_str}', size=7)
                             
             for i in range(self.nb_wsim_computed, len(ax)):
                 fig.delaxes(ax[i])

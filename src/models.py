@@ -73,7 +73,7 @@ class NN_Sharpe(nn.Module):
         mean_returns = weighted_returns.mean(dim=-1)
         std_returns = weighted_returns.std(dim=-1) + eps
 
-        return -mean_returns / torch.exp(std_returns)
+        return -mean_returns / std_returns
 
     def forward(self, x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
         allocations = self.get_alloc(x)
