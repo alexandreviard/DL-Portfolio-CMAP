@@ -53,6 +53,9 @@ class MaxSharpe():
         return res.x  
     
     def _max_sharpe_opt(self, cov_matrix:np.ndarray, mean_vector:np.ndarray) -> float:
+        """ 
+        optimise le sharpe avec scipy 
+        """
         
         def target_func(weights:np.ndarray) -> float:
             f = mean_vector @ weights / weights.T @ cov_matrix @ weights
@@ -74,6 +77,9 @@ class MaxSharpe():
         return res.x 
     
     def _max_sharpe_torch(self, cov_matrix, mean_vector):
+        """ 
+        optimise le sharpe avec Adam 
+        """
         class MaxSharpeLongOnly(torch.nn.Module):
             def __init__(self, d):
                     super().__init__()
