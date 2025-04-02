@@ -98,16 +98,18 @@ class PortfolioTrainer:
         n_assets = data_handler.n_assets
         n_obs = data_handler.n_obs
         n_simul = data_handler.n_simul
-        
+        self.nb_wsim_computed = min(8, n_simul)
         # initialisation des poids 
         self.weights_model = np.zeros((n_simul, n_obs, n_assets))
+        
         if compute_marko_weights:
+             #on compute les weights pour max 8 simulations
             if 'sharpe' in compute_marko_weights:
-                self.weights_sharpe = np.zeros((n_simul, n_obs, n_assets))
+                self.weights_sharpe = np.zeros((self.nb_wsim_computed, n_obs, n_assets))
             if 'marko' in compute_marko_weights:
-                self.weights_markow = np.zeros((n_simul, n_obs, n_assets))
+                self.weights_markow = np.zeros((self.nb_wsim_computed, n_obs, n_assets))
             if 'sharpe_torch' in compute_marko_weights:
-                self.weights_sharpe = np.zeros((n_simul, n_obs, n_assets))
+                self.weights_sharpe = np.zeros((self.nb_wsim_computed, n_obs, n_assets))
                 
 
         # On boucle sur le nombre de periode d'entrainement 
@@ -129,23 +131,25 @@ class PortfolioTrainer:
                 for _ in (trange(epochs) if self.verbose else range(epochs)) 
             ]
             
+            start, end = periods[2], periods[3]
             print(np.mean(loss_epochs))
             
             # on récupère le dernier poids de la fenêtre 
             with torch.no_grad():
-                alloc_test = self.model.get_alloc_last(X_test.to(self.device)).cpu() # (n_simul*(start-end), n_assets)
+                alloc_test = self.model.get_alloc_last(X_test[0:self.nb_wsim_computed*(end-start)].to(self.device)).cpu() # (n_simul*(start-end), n_assets)
                 self.alloc = alloc_test
                 
             if compute_marko_weights:
                 ws_sharpe = []
                 ws_marko = []
                 print(X_test.shape)
-                for j in trange(X_test.shape[0]):
+                
+                for j in trange(self.nb_wsim_computed): #on compute pas pour + de 8 simulations (trop couteux)
                     if 'sharpe' in compute_marko_weights:
                         w_sharpe = self.markowitz._compute_weights(batch=X_test[j].numpy(), method='sharpe')
                         ws_sharpe.append(w_sharpe)
                     if 'sharpe_torch' in compute_marko_weights:
-                        w_sharpe = self.markowitz._compute_weights(batch=X_test[j].numpy(), method='sharpe')
+                        w_sharpe = self.markowitz._compute_weights(batch=X_test[j].numpy(), method='sharpe_torch')
                         ws_sharpe.append(w_sharpe)
                     if 'marko' in compute_marko_weights:
                         w_marko = self.markowitz._compute_weights(batch=X_test[j].numpy(), method='marko')
@@ -155,18 +159,15 @@ class PortfolioTrainer:
                 ws_marko = np.asarray(ws_marko)
         
                 
-            start, end = periods[2], periods[3]
+
             print(start,end)
             
-            for sim in trange(n_simul):
+            for sim in trange(self.nb_wsim_computed):
                 self.weights_model[sim, start:end, :] = alloc_test[sim*(end-start) : (sim+1)*(end-start), :].numpy()
                 if compute_marko_weights:
                     self.weights_sharpe[sim, start:end, :] = ws_sharpe[sim*(end-start) : (sim+1)*(end-start), :]
                     self.weights_markow[sim, start:end, :] = ws_marko[sim*(end-start) : (sim+1)*(end-start), :]
 
-
-
-        
 
     def plot_weights(self, type_w='model', th_weights=None):
         
@@ -185,14 +186,14 @@ class PortfolioTrainer:
         if self.on_synthetic:
 
             ncols = 4
-            nrows = int(np.ceil(self.data_handler.n_simul / ncols))
+            nrows = int(np.ceil(self.nb_wsim_computed / ncols))
             width_per_subplot = 4
             height_per_subplot = 3
             figsize = (ncols * width_per_subplot, nrows * height_per_subplot)
             fig, ax = plt.subplots(ncols=ncols, nrows=nrows, figsize=figsize)
             ax = ax.flatten()
 
-            for sim in range(self.data_handler.n_simul):
+            for sim in range(self.nb_wsim_computed):
                 w = weights[sim]
                 T = w.shape[0]
                 time = np.arange(T)
@@ -221,19 +222,32 @@ class PortfolioTrainer:
             if type_w == 'model':
                 fig.suptitle(f"Poids pour {type_w}", fontsize=16)
 
+                axes_positions = [ax.get_position() for ax in fig.get_axes()]
+                max_y1 = max(pos.y1 for pos in axes_positions) if axes_positions else 0.9
+                text_y = min(max_y1 + 0.022, 0.95)
+                fig.subplots_adjust(top=text_y - 0.03)
                 params_text = (
                     f"hidden_size: {self.model.hidden_size}, batch_size: {self.batch_size}, num_layers: {self.model.num_layers}, permute : {self.permute_assets}\n"
                     f"rolling_window: {self.data_handler.rolling_window}, overlap: {self.data_handler.overlap}, epochs : {self.epochs}, "
                     f"shuffle: {self.data_handler.shuffle}, weight_decay: {self.weight_decay}"
                 )
+                fig.text(0.5, text_y, params_text, ha='center', fontsize=10)
 
-                fig.subplots_adjust(top=0.75)
-                fig.text(0.5, 0.81, params_text, ha='center', fontsize=10)
-                
-            else:
-                fig.suptitle(f'Poids pour {type_w}\n')
-                
-            for i in range(self.data_handler.n_simul, len(ax)):
+            elif type_w == 'marko':
+                weights_str = '\n'.join(
+                    f'{ticker} : {weight:.2%}' 
+                    for ticker, weight in zip(self.data_handler.dataset.tickers, self.th_weights_marko)
+                )
+                fig.suptitle(f'Poids pour {type_w}\nPoids optimaux théoriques :\n{weights_str}')
+
+            elif type_w == 'sharpe':
+                weights_str = '\n'.join(
+                    f'{ticker} : {weight:.2%}' 
+                    for ticker, weight in zip(self.data_handler.dataset.tickers, self.th_weights_sharpe)
+                )
+                fig.suptitle(f'Poids pour {type_w}\nPoids optimaux théoriques :\n{weights_str}')
+                            
+            for i in range(self.nb_wsim_computed, len(ax)):
                 fig.delaxes(ax[i])
             
             fig.tight_layout()
