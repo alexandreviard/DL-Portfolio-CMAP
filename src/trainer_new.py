@@ -143,8 +143,10 @@ class PortfolioTrainer:
                 ws_sharpe = []
                 ws_marko = []
                 print(X_test.shape)
+                self.xtest = X_test
                 
-                for j in trange(self.nb_wsim_computed): #on compute pas pour + de 8 simulations (trop couteux)
+                print(self.nb_wsim_computed*(end-start), self.nb_wsim_computed, end, start)
+                for j in trange(self.nb_wsim_computed*(end-start)): #on compute pas pour + de 8 simulations (trop couteux)
                     if 'sharpe' in compute_marko_weights:
                         w_sharpe = self.markowitz._compute_weights(batch=X_test[j].numpy(), method='sharpe')
                         ws_sharpe.append(w_sharpe)
@@ -159,8 +161,6 @@ class PortfolioTrainer:
                 ws_marko = np.asarray(ws_marko)
         
                 
-
-            print(start,end)
             
             for sim in trange(self.nb_wsim_computed):
                 self.weights_model[sim, start:end, :] = alloc_test[sim*(end-start) : (sim+1)*(end-start), :].numpy()
