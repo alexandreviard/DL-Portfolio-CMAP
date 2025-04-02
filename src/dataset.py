@@ -7,8 +7,6 @@ from datetime import datetime, timedelta
 from typing import Union, List, Dict, Tuple
 
 
-# A DISCUTER - POUR L'INSTANT ON PREND LE PARTI DE RENVOYER DES TENSEURS SANS LES DONNÉES DE PRIX 
-
 # Fincial dataset ne fait que recuperer les données brutes de YF et ensuite cree des returns synthetiques 
 # (eventuellement plusieurs simulations)
 
@@ -59,19 +57,14 @@ class FinancialDataset:
         self.end_date = end_date
         self.randomstate = randomstate
         self._raw_data = self._load_yf_data(log_returns)
+        self.dataset = self._get_market_data()
 
         """GÉRER LES N_SIMULS POUR LA PROCHAINE FOIS"""
         if synthetic:
-            self.dataset = self._get_market_data()
-            
             if not self.n_synthetic:
                 self.n_synthetic = self.dataset.shape[1]
 
             self.dataset_synthetic = self._get_synthetic_data()
-
-        else : 
-            self.dataset = self._get_market_data()
-
     
     def _load_yf_data(self, log_return: bool = False) -> Dict[str, pd.DataFrame]:
         """
@@ -220,8 +213,6 @@ class DataHandler:
         
 
         rolling_data = []
-        idx_start = start
-        idx_end = end
         
         if self.on_synthetic: 
             data = self.dataset.dataset_synthetic
