@@ -45,13 +45,10 @@ class FinancialDataset:
         end_date: str = '2020-12-31',
         log_returns: bool = False, 
         n_synthetic: int = None,
-        calibrated: bool = True,
-        mean: np.ndarray = np.zeros(2),
-        cov: np.ndarray = np.eye(2),
+        mean: np.ndarray = None,
+        cov: np.ndarray = None,
         randomstate: Union[int, None] = 42,
-    ) -> None:
-
-        
+    ) -> None: 
         self.tickers = tickers
         self.synthetic = synthetic
         self.n_synthetic = n_synthetic
@@ -61,18 +58,15 @@ class FinancialDataset:
         self.randomstate = randomstate
         self._raw_data = self._load_yf_data(log_returns)
         self.dataset = self._get_market_data()
+        self.mean = mean
+        self.cov = cov
 
         """GÉRER LES N_SIMULS POUR LA PROCHAINE FOIS"""
         if synthetic:
             if not self.n_synthetic:
                 self.n_synthetic = self.dataset.shape[1]
 
-            if calibrated:
-                self.dataset_synthetic = self._get_synthetic_data_calibrated()
-            else : 
-                self.mean = mean 
-                self.cov = cov
-                self.dataset_synthetic = self._get_synthetic_data()
+            self.dataset_synthetic = self._get_synthetic_data()
     
     def _load_yf_data(self, log_return: bool = False) -> Dict[str, pd.DataFrame]:
         """
@@ -114,7 +108,7 @@ class FinancialDataset:
 
         return tensor_returns.unsqueeze(0)
 
-    def _get_synthetic_data_calibrated(self) -> torch.Tensor:
+    def _get_synthetic_data(self) -> torch.Tensor:
         """
         data simulée selon une loi normale multivariée calibrée sur les données 
         renvoie un tenseur de dim (n_simul, n_dates, n_assets)
@@ -123,10 +117,11 @@ class FinancialDataset:
         returns = self._raw_data['returns'].values
 
         # échelle journalier
-        self.mu = returns.mean(axis=0)
-        self.Sigma = np.cov(returns, rowvar=False)  
+        if self.mean is None or self.cov is None:
+            self.mean = returns.mean(axis=0)
+            self.cov = np.cov(returns, rowvar=False)
 
-        synthetic_returns = np.random.multivariate_normal(self.mu, self.Sigma, size=(self.n_synthetic, self.n_simul)) # dim (n_assets, n_dates, n_simul) ??
+        synthetic_returns = np.random.multivariate_normal(self.mean, self.cov, size=(self.n_synthetic, self.n_simul)) # dim (n_assets, n_dates, n_simul) ??
 
         # on bascule les dimensions dans l'ordre canonique (n_simul, n_dates, n_assets) 
         synthetic_returns = np.transpose(synthetic_returns, (1, 0, 2))
@@ -134,23 +129,6 @@ class FinancialDataset:
         tensor_returns = torch.tensor(synthetic_returns, dtype=torch.float32)
 
         return tensor_returns 
-    
-    def _get_synthetic_data(self) -> torch.Tensor:
-        """
-        data simulée selon une loi normale multivariée selon une mean et une cov définies par l'utilisateur
-        renvoie un tenseur de dim (n_simul, n_dates, n_assets)
-        """
-        np.random.seed(self.randomstate)
-
-        # échelle journalier
-        synthetic_returns = np.random.multivariate_normal(self.mu, self.Sigma, size=(self.n_synthetic, self.n_simul)) # dim (n_assets, n_dates, n_simul) ??
-
-        # on bascule les dimensions dans l'ordre canonique (n_simul, n_dates, n_assets) 
-        synthetic_returns = np.transpose(synthetic_returns, (1, 0, 2))
-
-        tensor_returns = torch.tensor(synthetic_returns, dtype=torch.float32)
-
-        return tensor_returns     
     
     def prices(self) -> pd.DataFrame:
         """
@@ -293,6 +271,3 @@ class DataHandler:
         dataloader = DataLoader(dataset, batch_size=self.batch_size, shuffle=self.shuffle)
 
         return dataloader, X_test, (start_training, end_training, start_invest, end_invest)
-    
-    
-    
