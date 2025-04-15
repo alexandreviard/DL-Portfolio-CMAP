@@ -48,8 +48,8 @@ class PortfolioTrainer:
         self.on_synthetic = self.data_handler.on_synthetic
         self.batch_size = self.data_handler.batch_size
         if self.on_synthetic:
-            self.th_weights_sharpe = self.markowitz._max_torch_opt(self.data_handler.dataset.Sigma, self.data_handler.dataset.mu, 'sharpe')
-            self.th_weights_marko = self.markowitz._max_torch_opt(self.data_handler.dataset.Sigma, self.data_handler.dataset.mu, 'marko')
+            self.th_weights_sharpe = self.markowitz._max_torch_opt(self.data_handler.dataset.cov, self.data_handler.dataset.mean, 'sharpe')
+            self.th_weights_marko = self.markowitz._max_torch_opt(self.data_handler.dataset.cov, self.data_handler.dataset.mean, 'marko')
 
     def _train_epoch(
             self,
