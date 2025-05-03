@@ -107,12 +107,12 @@ class MaxSharpe():
         
         d=len(mean_vector)
         model = MaxSharpeLongOnly(d)
-        adam  = torch.optim.Adam(model.parameters(), lr=1e-3)
+        adam  = torch.optim.Adam(model.parameters(), lr=1e-2)
 
         torch_mu  = torch.from_numpy(mean_vector).float()
         torch_cov = torch.from_numpy(cov_matrix).float()
 
-        num_steps = 100
+        num_steps = 1000
         sharpe_log = np.zeros(shape=num_steps)
         weights_log = np.zeros(shape=(num_steps, d))
 
