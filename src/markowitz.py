@@ -94,8 +94,8 @@ class MaxSharpe():
                 return torch.softmax(self.w, dim=0)
 
         def sharpe_loss(weights, cov_matrix, mean_vector):
-            returns = torch.sum(weights*mean_vector)
-            risk    = torch.sqrt(weights.T@cov_matrix@weights)
+            returns = torch.sum(weights*mean_vector )
+            risk    = torch.sqrt(weights.T@cov_matrix@weights + 1e-8)
             sharpe  = returns / risk
             return -sharpe
         
@@ -115,7 +115,7 @@ class MaxSharpe():
         num_steps = 1000
         sharpe_log = np.zeros(shape=num_steps)
         weights_log = np.zeros(shape=(num_steps, d))
-
+        
         for s in range(num_steps):
             adam.zero_grad()
             if type_max == 'sharpe':
