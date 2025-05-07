@@ -95,7 +95,7 @@ class MaxSharpe():
 
         def sharpe_loss(weights, cov_matrix, mean_vector):
             returns = torch.sum(weights*mean_vector )
-            risk    = torch.sqrt(weights.T@cov_matrix@weights + 1e-8)
+            risk    = torch.sqrt(weights.T@cov_matrix@weights )
             sharpe  = returns / risk
             return -sharpe
         

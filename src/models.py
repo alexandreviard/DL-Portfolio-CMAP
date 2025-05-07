@@ -64,7 +64,7 @@ class NN_Sharpe(nn.Module):
         self,
         weights: torch.Tensor,
         returns: torch.Tensor,
-        eps: float = 1e-12
+        eps: float = 1e-4
     ) -> torch.Tensor:
         # weights : [batch_size, seq_length, output_size]
         #print(weights.shape)

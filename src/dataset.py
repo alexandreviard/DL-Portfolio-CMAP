@@ -82,6 +82,8 @@ class FinancialDataset:
             end=self.end_date,
             interval="1d"
             )['Close']
+
+        prices = prices[self.tickers]
         
         # Supprime la time zone éventuelle
         prices.index = prices.index.tz_localize(None).floor('D')
@@ -91,6 +93,8 @@ class FinancialDataset:
             returns = np.log(prices / prices.shift(1)).dropna()
         else : 
             returns = prices.pct_change().dropna()
+        
+        returns = returns[self.tickers]
 
         all_cols_returns = [f"{col}_rt" for col in prices.columns]
         returns.columns = all_cols_returns

@@ -65,9 +65,7 @@ class PortfolioTrainer:
 
         if isinstance(self.model, torch.nn.Module):
             self.model.train() 
-        
 
-            
         for batch_x, batch_y in dataloader:
 
             batch_x, batch_y = batch_x.to(self.device), batch_y.to(self.device)            
